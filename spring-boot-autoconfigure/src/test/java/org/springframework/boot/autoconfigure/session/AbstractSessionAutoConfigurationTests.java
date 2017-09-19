@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,9 @@
 
 package org.springframework.boot.autoconfigure.session;
 
-import java.util.Collection;
-
-import org.junit.After;
-
 import org.springframework.beans.DirectFieldAccessor;
-import org.springframework.boot.autoconfigure.PropertyPlaceholderAutoConfiguration;
-import org.springframework.boot.autoconfigure.web.ServerPropertiesAutoConfiguration;
-import org.springframework.boot.test.util.EnvironmentTestUtils;
+import org.springframework.boot.test.context.assertj.AssertableWebApplicationContext;
 import org.springframework.session.SessionRepository;
-import org.springframework.web.context.support.AnnotationConfigWebApplicationContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -36,42 +29,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 public abstract class AbstractSessionAutoConfigurationTests {
 
-	protected AnnotationConfigWebApplicationContext context;
-
-	@After
-	public void close() {
-		if (this.context != null) {
-			this.context.close();
-		}
-	}
-
 	protected <T extends SessionRepository<?>> T validateSessionRepository(
-			Class<T> type) {
-		SessionRepository<?> cacheManager = this.context.getBean(SessionRepository.class);
-		assertThat(cacheManager).as("Wrong session repository type").isInstanceOf(type);
-		return type.cast(cacheManager);
+			AssertableWebApplicationContext context, Class<T> type) {
+		assertThat(context).hasSingleBean(SessionRepository.class);
+		SessionRepository<?> repository = context.getBean(SessionRepository.class);
+		assertThat(repository).as("Wrong session repository type").isInstanceOf(type);
+		return type.cast(repository);
 	}
 
 	protected Integer getSessionTimeout(SessionRepository<?> sessionRepository) {
 		return (Integer) new DirectFieldAccessor(sessionRepository)
 				.getPropertyValue("defaultMaxInactiveInterval");
-	}
-
-	protected void load(String... environment) {
-		load(null, environment);
-	}
-
-	protected void load(Collection<Class<?>> configs, String... environment) {
-		AnnotationConfigWebApplicationContext ctx = new AnnotationConfigWebApplicationContext();
-		EnvironmentTestUtils.addEnvironment(ctx, environment);
-		if (configs != null) {
-			ctx.register(configs.toArray(new Class<?>[configs.size()]));
-		}
-		ctx.register(ServerPropertiesAutoConfiguration.class,
-				SessionAutoConfiguration.class,
-				PropertyPlaceholderAutoConfiguration.class);
-		ctx.refresh();
-		this.context = ctx;
 	}
 
 }

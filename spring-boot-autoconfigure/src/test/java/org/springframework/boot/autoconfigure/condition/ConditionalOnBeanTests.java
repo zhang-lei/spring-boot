@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,20 @@
 
 package org.springframework.boot.autoconfigure.condition;
 
+import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.util.Date;
 
 import org.junit.Test;
 
+import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.support.RootBeanDefinition;
-import org.springframework.boot.test.util.EnvironmentTestUtils;
-import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -39,89 +45,96 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Tests for {@link ConditionalOnBean}.
  *
  * @author Dave Syer
+ * @author Stephane Nicoll
  */
 public class ConditionalOnBeanTests {
 
-	private final AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
+	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner();
 
 	@Test
 	public void testNameOnBeanCondition() {
-		this.context.register(FooConfiguration.class, OnBeanNameConfiguration.class);
-		this.context.refresh();
-		assertThat(this.context.containsBean("bar")).isTrue();
-		assertThat(this.context.getBean("bar")).isEqualTo("bar");
+		this.contextRunner.withUserConfiguration(FooConfiguration.class,
+				OnBeanNameConfiguration.class).run(this::hasBarBean);
 	}
 
 	@Test
 	public void testNameAndTypeOnBeanCondition() {
-		this.context.register(FooConfiguration.class,
-				OnBeanNameAndTypeConfiguration.class);
-		this.context.refresh();
-		assertThat(this.context.containsBean("bar")).isTrue();
+		this.contextRunner
+				.withUserConfiguration(FooConfiguration.class,
+						OnBeanNameAndTypeConfiguration.class)
+				.run((context) -> assertThat(context).doesNotHaveBean("bar"));
 	}
 
 	@Test
 	public void testNameOnBeanConditionReverseOrder() {
-		this.context.register(OnBeanNameConfiguration.class, FooConfiguration.class);
-		this.context.refresh();
 		// Ideally this should be true
-		assertThat(this.context.containsBean("bar")).isFalse();
+		this.contextRunner
+				.withUserConfiguration(OnBeanNameConfiguration.class,
+						FooConfiguration.class)
+				.run((context) -> assertThat(context).doesNotHaveBean("bar"));
 	}
 
 	@Test
 	public void testClassOnBeanCondition() {
-		this.context.register(FooConfiguration.class, OnBeanClassConfiguration.class);
-		this.context.refresh();
-		assertThat(this.context.containsBean("bar")).isTrue();
-		assertThat(this.context.getBean("bar")).isEqualTo("bar");
+		this.contextRunner.withUserConfiguration(FooConfiguration.class,
+				OnBeanClassConfiguration.class).run(this::hasBarBean);
 	}
 
 	@Test
 	public void testClassOnBeanClassNameCondition() {
-		this.context.register(FooConfiguration.class, OnBeanClassNameConfiguration.class);
-		this.context.refresh();
-		assertThat(this.context.containsBean("bar")).isTrue();
-		assertThat(this.context.getBean("bar")).isEqualTo("bar");
+		this.contextRunner.withUserConfiguration(FooConfiguration.class,
+				OnBeanClassNameConfiguration.class).run(this::hasBarBean);
 	}
 
 	@Test
 	public void testOnBeanConditionWithXml() {
-		this.context.register(XmlConfiguration.class, OnBeanNameConfiguration.class);
-		this.context.refresh();
-		assertThat(this.context.containsBean("bar")).isTrue();
-		assertThat(this.context.getBean("bar")).isEqualTo("bar");
+		this.contextRunner.withUserConfiguration(XmlConfiguration.class,
+				OnBeanNameConfiguration.class).run(this::hasBarBean);
 	}
 
 	@Test
 	public void testOnBeanConditionWithCombinedXml() {
-		this.context.register(CombinedXmlConfiguration.class);
-		this.context.refresh();
 		// Ideally this should be true
-		assertThat(this.context.containsBean("bar")).isFalse();
+		this.contextRunner.withUserConfiguration(CombinedXmlConfiguration.class)
+				.run((context) -> assertThat(context).doesNotHaveBean("bar"));
 	}
 
 	@Test
 	public void testAnnotationOnBeanCondition() {
-		this.context.register(FooConfiguration.class, OnAnnotationConfiguration.class);
-		this.context.refresh();
-		assertThat(this.context.containsBean("bar")).isTrue();
-		assertThat(this.context.getBean("bar")).isEqualTo("bar");
+		this.contextRunner.withUserConfiguration(FooConfiguration.class,
+				OnAnnotationConfiguration.class).run(this::hasBarBean);
 	}
 
 	@Test
 	public void testOnMissingBeanType() throws Exception {
-		this.context.register(FooConfiguration.class,
-				OnBeanMissingClassConfiguration.class);
-		this.context.refresh();
-		assertThat(this.context.containsBean("bar")).isFalse();
+		this.contextRunner
+				.withUserConfiguration(FooConfiguration.class,
+						OnBeanMissingClassConfiguration.class)
+				.run((context) -> assertThat(context).doesNotHaveBean("bar"));
 	}
 
 	@Test
 	public void withPropertyPlaceholderClassName() throws Exception {
-		EnvironmentTestUtils.addEnvironment(this.context, "mybeanclass=java.lang.String");
-		this.context.register(PropertySourcesPlaceholderConfigurer.class,
-				WithPropertyPlaceholderClassName.class, OnBeanClassConfiguration.class);
-		this.context.refresh();
+		this.contextRunner
+				.withUserConfiguration(PropertySourcesPlaceholderConfigurer.class,
+						WithPropertyPlaceholderClassName.class,
+						OnBeanClassConfiguration.class)
+				.withPropertyValues("mybeanclass=java.lang.String")
+				.run((context) -> assertThat(context).hasNotFailed());
+	}
+
+	@Test
+	public void beanProducedByFactoryBeanIsConsideredWhenMatchingOnAnnotation() {
+		this.contextRunner.withUserConfiguration(FactoryBeanConfiguration.class,
+				OnAnnotationWithFactoryBeanConfiguration.class).run((context) -> {
+					assertThat(context).hasBean("bar");
+					assertThat(context).hasSingleBean(ExampleBean.class);
+				});
+	}
+
+	private void hasBarBean(AssertableApplicationContext context) {
+		assertThat(context).hasBean("bar");
+		assertThat(context.getBean("bar")).isEqualTo("bar");
 	}
 
 	@Configuration
@@ -160,19 +173,23 @@ public class ConditionalOnBeanTests {
 	@Configuration
 	@ConditionalOnBean(String.class)
 	protected static class OnBeanClassConfiguration {
+
 		@Bean
 		public String bar() {
 			return "bar";
 		}
+
 	}
 
 	@Configuration
 	@ConditionalOnBean(type = "java.lang.String")
 	protected static class OnBeanClassNameConfiguration {
+
 		@Bean
 		public String bar() {
 			return "bar";
 		}
+
 	}
 
 	@Configuration
@@ -216,6 +233,27 @@ public class ConditionalOnBeanTests {
 
 	}
 
+	@Configuration
+	static class FactoryBeanConfiguration {
+
+		@Bean
+		public ExampleFactoryBean exampleBeanFactoryBean() {
+			return new ExampleFactoryBean();
+		}
+
+	}
+
+	@Configuration
+	@ConditionalOnBean(annotation = TestAnnotation.class)
+	static class OnAnnotationWithFactoryBeanConfiguration {
+
+		@Bean
+		public String bar() {
+			return "bar";
+		}
+
+	}
+
 	protected static class WithPropertyPlaceholderClassNameRegistrar
 			implements ImportBeanDefinitionRegistrar {
 
@@ -226,6 +264,48 @@ public class ConditionalOnBeanTests {
 			bd.setBeanClassName("${mybeanclass}");
 			registry.registerBeanDefinition("mybean", bd);
 		}
+
+	}
+
+	public static class ExampleFactoryBean implements FactoryBean<ExampleBean> {
+
+		@Override
+		public ExampleBean getObject() throws Exception {
+			return new ExampleBean("fromFactory");
+		}
+
+		@Override
+		public Class<?> getObjectType() {
+			return ExampleBean.class;
+		}
+
+		@Override
+		public boolean isSingleton() {
+			return false;
+		}
+
+	}
+
+	@TestAnnotation
+	public static class ExampleBean {
+
+		private String value;
+
+		public ExampleBean(String value) {
+			this.value = value;
+		}
+
+		@Override
+		public String toString() {
+			return this.value;
+		}
+
+	}
+
+	@Target(ElementType.TYPE)
+	@Retention(RetentionPolicy.RUNTIME)
+	@Documented
+	public @interface TestAnnotation {
 
 	}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,9 +24,9 @@ import java.net.URLConnection;
 import java.security.AccessController;
 import java.security.PrivilegedExceptionAction;
 import java.util.Enumeration;
+import java.util.jar.JarFile;
 
 import org.springframework.boot.loader.jar.Handler;
-import org.springframework.boot.loader.jar.JarFile;
 
 /**
  * {@link ClassLoader} used by the {@link Launcher}.
@@ -36,6 +36,10 @@ import org.springframework.boot.loader.jar.JarFile;
  * @author Andy Wilkinson
  */
 public class LaunchedURLClassLoader extends URLClassLoader {
+
+	static {
+		ClassLoader.registerAsParallelCapable();
+	}
 
 	/**
 	 * Create a new {@link LaunchedURLClassLoader} instance.
@@ -124,30 +128,28 @@ public class LaunchedURLClassLoader extends URLClassLoader {
 
 	private void definePackage(final String className, final String packageName) {
 		try {
-			AccessController.doPrivileged(new PrivilegedExceptionAction<Object>() {
-				@Override
-				public Object run() throws ClassNotFoundException {
-					String packageEntryName = packageName.replace(".", "/") + "/";
-					String classEntryName = className.replace(".", "/") + ".class";
-					for (URL url : getURLs()) {
-						try {
-							if (url.getContent() instanceof JarFile) {
-								JarFile jarFile = (JarFile) url.getContent();
-								if (jarFile.getEntry(classEntryName) != null
-										&& jarFile.getEntry(packageEntryName) != null
-										&& jarFile.getManifest() != null) {
-									definePackage(packageName, jarFile.getManifest(),
-											url);
-									return null;
-								}
+			AccessController.doPrivileged((PrivilegedExceptionAction<Object>) () -> {
+				String packageEntryName = packageName.replace('.', '/') + "/";
+				String classEntryName = className.replace('.', '/') + ".class";
+				for (URL url : getURLs()) {
+					try {
+						URLConnection connection = url.openConnection();
+						if (connection instanceof JarURLConnection) {
+							JarFile jarFile = ((JarURLConnection) connection)
+									.getJarFile();
+							if (jarFile.getEntry(classEntryName) != null
+									&& jarFile.getEntry(packageEntryName) != null
+									&& jarFile.getManifest() != null) {
+								definePackage(packageName, jarFile.getManifest(), url);
+								return null;
 							}
 						}
-						catch (IOException ex) {
-							// Ignore
-						}
 					}
-					return null;
+					catch (IOException ex) {
+						// Ignore
+					}
 				}
+				return null;
 			}, AccessController.getContext());
 		}
 		catch (java.security.PrivilegedActionException ex) {
@@ -175,8 +177,8 @@ public class LaunchedURLClassLoader extends URLClassLoader {
 
 	private void clearCache(URLConnection connection) throws IOException {
 		Object jarFile = ((JarURLConnection) connection).getJarFile();
-		if (jarFile instanceof JarFile) {
-			((JarFile) jarFile).clearCache();
+		if (jarFile instanceof org.springframework.boot.loader.jar.JarFile) {
+			((org.springframework.boot.loader.jar.JarFile) jarFile).clearCache();
 		}
 	}
 

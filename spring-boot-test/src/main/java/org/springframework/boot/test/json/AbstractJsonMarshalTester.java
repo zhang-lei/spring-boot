@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@ import java.lang.reflect.Field;
 
 import org.assertj.core.api.Assertions;
 
-import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.ObjectFactory;
 import org.springframework.core.ResolvableType;
 import org.springframework.core.io.ByteArrayResource;
@@ -38,7 +37,6 @@ import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.util.Assert;
 import org.springframework.util.ReflectionUtils;
-import org.springframework.util.ReflectionUtils.FieldCallback;
 
 /**
  * Base class for AssertJ based JSON marshal testers. Exposes specific Asserts following a
@@ -114,6 +112,14 @@ public abstract class AbstractJsonMarshalTester<T> {
 	}
 
 	/**
+	 * Return class used to load relative resources.
+	 * @return the resource load class
+	 */
+	protected final Class<?> getResourceLoadClass() {
+		return this.resourceLoadClass;
+	}
+
+	/**
 	 * Return {@link JsonContent} from writing the specific value.
 	 * @param value the value to write
 	 * @return the {@link JsonContent}
@@ -123,7 +129,7 @@ public abstract class AbstractJsonMarshalTester<T> {
 		verify();
 		Assert.notNull(value, "Value must not be null");
 		String json = writeObject(value, this.type);
-		return new JsonContent<T>(this.resourceLoadClass, this.type, json);
+		return new JsonContent<>(this.resourceLoadClass, this.type, json);
 	}
 
 	/**
@@ -266,7 +272,7 @@ public abstract class AbstractJsonMarshalTester<T> {
 		InputStream inputStream = resource.getInputStream();
 		T object = readObject(inputStream, this.type);
 		closeQuietly(inputStream);
-		return new ObjectContent<T>(this.type, object);
+		return new ObjectContent<>(this.type, object);
 	}
 
 	/**
@@ -291,7 +297,7 @@ public abstract class AbstractJsonMarshalTester<T> {
 		Assert.notNull(reader, "Reader must not be null");
 		T object = readObject(reader, this.type);
 		closeQuietly(reader);
-		return new ObjectContent<T>(this.type, object);
+		return new ObjectContent<>(this.type, object);
 	}
 
 	private void closeQuietly(Closeable closeable) {
@@ -345,6 +351,7 @@ public abstract class AbstractJsonMarshalTester<T> {
 	/**
 	 * Utility class used to support field initialization. Used by subclasses to support
 	 * {@code initFields}.
+	 *
 	 * @param <M> The marshaller type
 	 */
 	protected static abstract class FieldInitializer<M> {
@@ -361,29 +368,15 @@ public abstract class AbstractJsonMarshalTester<T> {
 		public void initFields(final Object testInstance, final M marshaller) {
 			Assert.notNull(testInstance, "TestInstance must not be null");
 			Assert.notNull(marshaller, "Marshaller must not be null");
-			initFields(testInstance, new ObjectFactory<M>() {
-
-				@Override
-				public M getObject() throws BeansException {
-					return marshaller;
-				}
-
-			});
+			initFields(testInstance, () -> marshaller);
 		}
 
 		public void initFields(final Object testInstance,
 				final ObjectFactory<M> marshaller) {
 			Assert.notNull(testInstance, "TestInstance must not be null");
 			Assert.notNull(marshaller, "Marshaller must not be null");
-			ReflectionUtils.doWithFields(testInstance.getClass(), new FieldCallback() {
-
-				@Override
-				public void doWith(Field field)
-						throws IllegalArgumentException, IllegalAccessException {
-					doWithField(field, testInstance, marshaller);
-				}
-
-			});
+			ReflectionUtils.doWithFields(testInstance.getClass(),
+					(field) -> doWithField(field, testInstance, marshaller));
 		}
 
 		protected void doWithField(Field field, Object test,

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.mockito.Answers;
-import org.mockito.internal.util.MockUtil;
 import org.mockito.mock.MockCreationSettings;
 
 import org.springframework.boot.test.mock.mockito.example.ExampleService;
@@ -79,11 +78,10 @@ public class SpyDefinitionTests {
 		SpyDefinition definition = new SpyDefinition("name", REAL_SERVICE_TYPE,
 				MockReset.BEFORE, true, null);
 		RealExampleService spy = definition.createSpy(new RealExampleService("hello"));
-		MockCreationSettings<?> settings = new MockUtil().getMockSettings(spy);
+		MockCreationSettings<?> settings = MockitoApi.get().getMockSettings(spy);
 		assertThat(spy).isInstanceOf(ExampleService.class);
 		assertThat(settings.getMockName().toString()).isEqualTo("name");
-		assertThat(settings.getDefaultAnswer())
-				.isEqualTo(Answers.CALLS_REAL_METHODS.get());
+		assertThat(settings.getDefaultAnswer()).isEqualTo(Answers.CALLS_REAL_METHODS);
 		assertThat(MockReset.get(spy)).isEqualTo(MockReset.BEFORE);
 	}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionOutcome;
 import org.springframework.boot.diagnostics.FailureAnalysis;
 import org.springframework.boot.diagnostics.analyzer.AbstractInjectionFailureAnalyzer;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.ResolvableType;
 import org.springframework.core.type.MethodMetadata;
 import org.springframework.core.type.classreading.CachingMetadataReaderFactory;
 import org.springframework.core.type.classreading.MetadataReader;
@@ -94,15 +95,28 @@ class NoSuchBeanDefinitionFailureAnalyzer
 	}
 
 	private String getBeanDescription(NoSuchBeanDefinitionException cause) {
-		if (cause.getBeanType() != null) {
-			return "a bean of type '" + cause.getBeanType().getName() + "'";
+		if (cause.getResolvableType() != null) {
+			Class<?> type = extractBeanType(cause.getResolvableType());
+			return "a bean of type '" + type.getName() + "'";
 		}
 		return "a bean named '" + cause.getBeanName() + "'";
 	}
 
+	private Class<?> extractBeanType(ResolvableType resolvableType) {
+		ResolvableType collectionType = resolvableType.asCollection();
+		if (!collectionType.equals(ResolvableType.NONE)) {
+			return collectionType.getGeneric(0).getRawClass();
+		}
+		ResolvableType mapType = resolvableType.asMap();
+		if (!mapType.equals(ResolvableType.NONE)) {
+			return mapType.getGeneric(1).getRawClass();
+		}
+		return resolvableType.getRawClass();
+	}
+
 	private List<AutoConfigurationResult> getAutoConfigurationResults(
 			NoSuchBeanDefinitionException cause) {
-		List<AutoConfigurationResult> results = new ArrayList<AutoConfigurationResult>();
+		List<AutoConfigurationResult> results = new ArrayList<>();
 		collectReportedConditionOutcomes(cause, results);
 		collectExcludedAutoConfiguration(cause, results);
 		return results;
@@ -183,7 +197,7 @@ class NoSuchBeanDefinitionFailureAnalyzer
 						.getMetadataReader(source.getClassName());
 				Set<MethodMetadata> candidates = classMetadata.getAnnotationMetadata()
 						.getAnnotatedMethods(Bean.class.getName());
-				List<MethodMetadata> result = new ArrayList<MethodMetadata>();
+				List<MethodMetadata> result = new ArrayList<>();
 				for (MethodMetadata candidate : candidates) {
 					if (isMatch(candidate, source, cause)) {
 						result.add(candidate);
@@ -203,9 +217,9 @@ class NoSuchBeanDefinitionFailureAnalyzer
 				return false;
 			}
 			String name = cause.getBeanName();
-			Class<?> type = cause.getBeanType();
-			return ((name != null && hasName(candidate, name))
-					|| (type != null && hasType(candidate, type)));
+			ResolvableType resolvableType = cause.getResolvableType();
+			return ((name != null && hasName(candidate, name)) || (resolvableType != null
+					&& hasType(candidate, extractBeanType(resolvableType))));
 		}
 
 		private boolean hasName(MethodMetadata methodMetadata, String name) {

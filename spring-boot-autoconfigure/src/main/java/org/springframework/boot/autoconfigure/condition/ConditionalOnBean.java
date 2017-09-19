@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,22 @@ import org.springframework.context.annotation.Conditional;
 
 /**
  * {@link Conditional} that only matches when the specified bean classes and/or names are
+ * already contained in the {@link BeanFactory}. When placed on a {@code @Bean} method,
+ * the bean class defaults to the return type of the factory method:
+ *
+ * <pre class="code">
+ * &#064;Configuration
+ * public class MyAutoConfiguration {
+ *
+ *     &#064;ConditionalOnBean
+ *     &#064;Bean
+ *     public MyService myService() {
+ *         ...
+ *     }
+ *
+ * }</pre>
+ * <p>
+ * In the sample above the condition will match if a bean of type {@code MyService} is
  * already contained in the {@link BeanFactory}.
  * <p>
  * The condition can only match the bean definitions that have been processed by the
@@ -45,30 +61,30 @@ import org.springframework.context.annotation.Conditional;
 public @interface ConditionalOnBean {
 
 	/**
-	 * The class type of bean that should be checked. The condition matches when any of
-	 * the classes specified is contained in the {@link ApplicationContext}.
+	 * The class type of bean that should be checked. The condition matches when all of
+	 * the classes specified are contained in the {@link ApplicationContext}.
 	 * @return the class types of beans to check
 	 */
 	Class<?>[] value() default {};
 
 	/**
-	 * The class type names of bean that should be checked. The condition matches when any
-	 * of the classes specified is contained in the {@link ApplicationContext}.
+	 * The class type names of bean that should be checked. The condition matches when all
+	 * of the classes specified are contained in the {@link ApplicationContext}.
 	 * @return the class type names of beans to check
 	 */
 	String[] type() default {};
 
 	/**
 	 * The annotation type decorating a bean that should be checked. The condition matches
-	 * when any of the annotations specified is defined on a bean in the
+	 * when all of the annotations specified are defined on beans in the
 	 * {@link ApplicationContext}.
 	 * @return the class-level annotation types to check
 	 */
 	Class<? extends Annotation>[] annotation() default {};
 
 	/**
-	 * The names of beans to check. The condition matches when any of the bean names
-	 * specified is contained in the {@link ApplicationContext}.
+	 * The names of beans to check. The condition matches when all of the bean names
+	 * specified are contained in the {@link ApplicationContext}.
 	 * @return the name of beans to check
 	 */
 	String[] name() default {};

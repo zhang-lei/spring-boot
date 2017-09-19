@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,12 +26,11 @@ import com.jayway.jsonpath.JsonPath;
 import org.assertj.core.api.AbstractAssert;
 import org.assertj.core.api.AbstractBooleanAssert;
 import org.assertj.core.api.AbstractCharSequenceAssert;
-import org.assertj.core.api.AbstractListAssert;
-import org.assertj.core.api.AbstractMapAssert;
 import org.assertj.core.api.AbstractObjectAssert;
 import org.assertj.core.api.Assert;
 import org.assertj.core.api.Assertions;
-import org.assertj.core.api.ObjectAssert;
+import org.assertj.core.api.ListAssert;
+import org.assertj.core.api.MapAssert;
 import org.skyscreamer.jsonassert.JSONCompare;
 import org.skyscreamer.jsonassert.JSONCompareMode;
 import org.skyscreamer.jsonassert.JSONCompareResult;
@@ -947,12 +946,13 @@ public class JsonContentAssert extends AbstractAssert<JsonContentAssert, CharSeq
 	 * @param expression the {@link JsonPath} expression
 	 * @param args arguments to parameterize the {@code JsonPath} expression with, using
 	 * formatting specifiers defined in {@link String#format(String, Object...)}
+	 * @param <E> element type
 	 * @return a new assertion object whose object under test is the extracted item
 	 * @throws AssertionError if the path is not valid or does not result in an array
 	 */
 	@SuppressWarnings("unchecked")
-	public AbstractListAssert<?, ?, Object, ObjectAssert<Object>> extractingJsonPathArrayValue(
-			CharSequence expression, Object... args) {
+	public <E> ListAssert<E> extractingJsonPathArrayValue(CharSequence expression,
+			Object... args) {
 		return Assertions.assertThat(
 				extractingJsonPathValue(expression, args, List.class, "an array"));
 	}
@@ -962,12 +962,14 @@ public class JsonContentAssert extends AbstractAssert<JsonContentAssert, CharSeq
 	 * @param expression the {@link JsonPath} expression
 	 * @param args arguments to parameterize the {@code JsonPath} expression with, using
 	 * formatting specifiers defined in {@link String#format(String, Object...)}
+	 * @param <K> key type
+	 * @param <V> value type
 	 * @return a new assertion object whose object under test is the extracted item
 	 * @throws AssertionError if the path is not valid or does not result in a map
 	 */
 	@SuppressWarnings("unchecked")
-	public AbstractMapAssert<?, ?, Object, Object> extractingJsonPathMapValue(
-			CharSequence expression, Object... args) {
+	public <K, V> MapAssert<K, V> extractingJsonPathMapValue(CharSequence expression,
+			Object... args) {
 		return Assertions.assertThat(
 				extractingJsonPathValue(expression, args, Map.class, "a map"));
 	}
@@ -987,9 +989,17 @@ public class JsonContentAssert extends AbstractAssert<JsonContentAssert, CharSeq
 		if (this.actual == null) {
 			return compareForNull(expectedJson);
 		}
-		return JSONCompare.compareJSON(
-				(expectedJson == null ? null : expectedJson.toString()),
-				this.actual.toString(), compareMode);
+		try {
+			return JSONCompare.compareJSON(
+					(expectedJson == null ? null : expectedJson.toString()),
+					this.actual.toString(), compareMode);
+		}
+		catch (Exception ex) {
+			if (ex instanceof RuntimeException) {
+				throw (RuntimeException) ex;
+			}
+			throw new IllegalStateException(ex);
+		}
 	}
 
 	private JSONCompareResult compare(CharSequence expectedJson,
@@ -997,9 +1007,17 @@ public class JsonContentAssert extends AbstractAssert<JsonContentAssert, CharSeq
 		if (this.actual == null) {
 			return compareForNull(expectedJson);
 		}
-		return JSONCompare.compareJSON(
-				(expectedJson == null ? null : expectedJson.toString()),
-				this.actual.toString(), comparator);
+		try {
+			return JSONCompare.compareJSON(
+					(expectedJson == null ? null : expectedJson.toString()),
+					this.actual.toString(), comparator);
+		}
+		catch (Exception ex) {
+			if (ex instanceof RuntimeException) {
+				throw (RuntimeException) ex;
+			}
+			throw new IllegalStateException(ex);
+		}
 	}
 
 	private JSONCompareResult compareForNull(CharSequence expectedJson) {

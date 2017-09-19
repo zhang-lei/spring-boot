@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import java.util.List;
 
 import org.junit.Test;
 
+import org.springframework.beans.factory.BeanCurrentlyInCreationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.diagnostics.FailureAnalysis;
 import org.springframework.boot.diagnostics.FailureAnalyzer;
@@ -40,7 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.fail;
 
 /**
- * Tests for {@link BeanCurrentlyInCreationFailureAnalyzer}
+ * Tests for {@link BeanCurrentlyInCreationFailureAnalyzer}.
  *
  * @author Andy Wilkinson
  */
@@ -66,14 +67,6 @@ public class BeanCurrentlyInCreationFailureAnalyzerTests {
 		assertThat(lines.get(7)).startsWith(
 				"|  three defined in " + CyclicBeanMethodsConfiguration.class.getName());
 		assertThat(lines.get(8)).isEqualTo("└─────┘");
-		assertThat(analysis.getDescription()).startsWith(
-				"The dependencies of some of the beans in the application context form a cycle:");
-		assertThat(analysis.getDescription()).contains(
-				"one defined in " + CyclicBeanMethodsConfiguration.class.getName());
-		assertThat(analysis.getDescription()).contains(
-				"two defined in " + CyclicBeanMethodsConfiguration.class.getName());
-		assertThat(analysis.getDescription()).contains(
-				"three defined in " + CyclicBeanMethodsConfiguration.class.getName());
 	}
 
 	@Test
@@ -124,46 +117,41 @@ public class BeanCurrentlyInCreationFailureAnalyzerTests {
 		assertThat(lines.get(11)).isEqualTo("└─────┘");
 	}
 
+	@Test
+	public void cycleWithAnUnknownStartIsNotAnalyzed() throws IOException {
+		assertThat(this.analyzer.analyze(new BeanCurrentlyInCreationException("test")))
+				.isNull();
+	}
+
 	private List<String> readDescriptionLines(FailureAnalysis analysis)
 			throws IOException {
-		BufferedReader lineReader = new BufferedReader(
-				new StringReader(analysis.getDescription()));
-		try {
-			List<String> lines = new ArrayList<String>();
+		try (BufferedReader lineReader = new BufferedReader(
+				new StringReader(analysis.getDescription()))) {
+			List<String> lines = new ArrayList<>();
 			String line;
 			while ((line = lineReader.readLine()) != null) {
 				lines.add(line);
 			}
 			return lines;
 		}
-		finally {
-			lineReader.close();
-		}
 	}
 
 	private FailureAnalysis performAnalysis(Class<?> configuration) {
 		FailureAnalysis analysis = this.analyzer.analyze(createFailure(configuration));
 		assertThat(analysis).isNotNull();
-		System.out.println(analysis.getDescription());
 		return analysis;
 	}
 
 	private Exception createFailure(Class<?> configuration) {
-		ConfigurableApplicationContext context = null;
-		try {
-			context = new AnnotationConfigApplicationContext(configuration);
+		try (ConfigurableApplicationContext context = new AnnotationConfigApplicationContext(
+				configuration);) {
+			fail("Expected failure did not occur");
+			return null;
 		}
 		catch (Exception ex) {
 			ex.printStackTrace();
 			return ex;
 		}
-		finally {
-			if (context != null) {
-				context.close();
-			}
-		}
-		fail("Expected failure did not occur");
-		return null;
 	}
 
 	@org.springframework.context.annotation.Configuration

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@ import com.mongodb.MongoClientOptions;
 import org.junit.After;
 import org.junit.Test;
 
-import org.springframework.boot.autoconfigure.PropertyPlaceholderAutoConfiguration;
-import org.springframework.boot.test.util.EnvironmentTestUtils;
+import org.springframework.boot.autoconfigure.context.PropertyPlaceholderAutoConfiguration;
+import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -60,8 +60,7 @@ public class MongoAutoConfigurationTests {
 	@Test
 	public void optionsAdded() {
 		this.context = new AnnotationConfigApplicationContext();
-		EnvironmentTestUtils.addEnvironment(this.context,
-				"spring.data.mongodb.host:localhost");
+		TestPropertyValues.of("spring.data.mongodb.host:localhost").applyTo(this.context);
 		this.context.register(OptionsConfig.class,
 				PropertyPlaceholderAutoConfiguration.class, MongoAutoConfiguration.class);
 		this.context.refresh();
@@ -72,8 +71,8 @@ public class MongoAutoConfigurationTests {
 	@Test
 	public void optionsAddedButNoHost() {
 		this.context = new AnnotationConfigApplicationContext();
-		EnvironmentTestUtils.addEnvironment(this.context,
-				"spring.data.mongodb.uri:mongodb://localhost/test");
+		TestPropertyValues.of("spring.data.mongodb.uri:mongodb://localhost/test")
+				.applyTo(this.context);
 		this.context.register(OptionsConfig.class,
 				PropertyPlaceholderAutoConfiguration.class, MongoAutoConfiguration.class);
 		this.context.refresh();
@@ -84,8 +83,8 @@ public class MongoAutoConfigurationTests {
 	@Test
 	public void optionsSslConfig() {
 		this.context = new AnnotationConfigApplicationContext();
-		EnvironmentTestUtils.addEnvironment(this.context,
-				"spring.data.mongodb.uri:mongodb://localhost/test");
+		TestPropertyValues.of("spring.data.mongodb.uri:mongodb://localhost/test")
+				.applyTo(this.context);
 		this.context.register(SslOptionsConfig.class,
 				PropertyPlaceholderAutoConfiguration.class, MongoAutoConfiguration.class);
 		this.context.refresh();

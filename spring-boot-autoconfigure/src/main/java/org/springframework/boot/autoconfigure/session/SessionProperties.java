@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,15 @@
 
 package org.springframework.boot.autoconfigure.session;
 
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.web.ServerProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.session.data.redis.RedisFlushMode;
+import org.springframework.boot.web.servlet.DispatcherType;
+import org.springframework.session.web.http.SessionRepositoryFilter;
 
 /**
  * Configuration properties for Spring Session.
@@ -29,7 +34,7 @@ import org.springframework.session.data.redis.RedisFlushMode;
  * @author Vedran Pavic
  * @since 1.4.0
  */
-@ConfigurationProperties("spring.session")
+@ConfigurationProperties(prefix = "spring.session")
 public class SessionProperties {
 
 	/**
@@ -39,13 +44,7 @@ public class SessionProperties {
 
 	private Integer timeout;
 
-	private final Hazelcast hazelcast = new Hazelcast();
-
-	private final Jdbc jdbc = new Jdbc();
-
-	private final Mongo mongo = new Mongo();
-
-	private final Redis redis = new Redis();
+	private Servlet servlet = new Servlet();
 
 	public SessionProperties(ObjectProvider<ServerProperties> serverProperties) {
 		ServerProperties properties = serverProperties.getIfUnique();
@@ -69,149 +68,44 @@ public class SessionProperties {
 		return this.timeout;
 	}
 
-	public Hazelcast getHazelcast() {
-		return this.hazelcast;
+	public Servlet getServlet() {
+		return this.servlet;
 	}
 
-	public Jdbc getJdbc() {
-		return this.jdbc;
+	public void setServlet(Servlet servlet) {
+		this.servlet = servlet;
 	}
 
-	public Mongo getMongo() {
-		return this.mongo;
-	}
-
-	public Redis getRedis() {
-		return this.redis;
-	}
-
-	public static class Hazelcast {
+	/**
+	 * Servlet-related properties.
+	 */
+	public static class Servlet {
 
 		/**
-		 * Name of the map used to store sessions.
+		 * Session repository filter order.
 		 */
-		private String mapName = "spring:session:sessions";
-
-		public String getMapName() {
-			return this.mapName;
-		}
-
-		public void setMapName(String mapName) {
-			this.mapName = mapName;
-		}
-
-	}
-
-	public static class Jdbc {
-
-		private static final String DEFAULT_SCHEMA_LOCATION = "classpath:org/springframework/"
-				+ "session/jdbc/schema-@@platform@@.sql";
-
-		private static final String DEFAULT_TABLE_NAME = "SPRING_SESSION";
+		private int filterOrder = SessionRepositoryFilter.DEFAULT_ORDER;
 
 		/**
-		 * Path to the SQL file to use to initialize the database schema.
+		 * Session repository filter dispatcher types.
 		 */
-		private String schema = DEFAULT_SCHEMA_LOCATION;
+		private Set<DispatcherType> filterDispatcherTypes = new HashSet<>(Arrays.asList(
+				DispatcherType.ASYNC, DispatcherType.ERROR, DispatcherType.REQUEST));
 
-		/**
-		 * Name of database table used to store sessions.
-		 */
-		private String tableName = DEFAULT_TABLE_NAME;
-
-		private final Initializer initializer = new Initializer();
-
-		public String getSchema() {
-			return this.schema;
+		public int getFilterOrder() {
+			return this.filterOrder;
 		}
 
-		public void setSchema(String schema) {
-			this.schema = schema;
+		public void setFilterOrder(int filterOrder) {
+			this.filterOrder = filterOrder;
 		}
 
-		public String getTableName() {
-			return this.tableName;
+		public Set<DispatcherType> getFilterDispatcherTypes() {
+			return this.filterDispatcherTypes;
 		}
 
-		public void setTableName(String tableName) {
-			this.tableName = tableName;
-		}
-
-		public Initializer getInitializer() {
-			return this.initializer;
-		}
-
-		public class Initializer {
-
-			/**
-			 * Create the required session tables on startup if necessary. Enabled
-			 * automatically if the default table name is set or a custom schema is
-			 * configured.
-			 */
-			private Boolean enabled;
-
-			public boolean isEnabled() {
-				if (this.enabled != null) {
-					return this.enabled;
-				}
-				boolean defaultTableName = DEFAULT_TABLE_NAME
-						.equals(Jdbc.this.getTableName());
-				boolean customSchema = !DEFAULT_SCHEMA_LOCATION
-						.equals(Jdbc.this.getSchema());
-				return (defaultTableName || customSchema);
-			}
-
-			public void setEnabled(boolean enabled) {
-				this.enabled = enabled;
-			}
-
-		}
-
-	}
-
-	public static class Mongo {
-
-		/**
-		 * Collection name used to store sessions.
-		 */
-		private String collectionName = "sessions";
-
-		public String getCollectionName() {
-			return this.collectionName;
-		}
-
-		public void setCollectionName(String collectionName) {
-			this.collectionName = collectionName;
-		}
-
-	}
-
-	public static class Redis {
-
-		/**
-		 * Namespace for keys used to store sessions.
-		 */
-		private String namespace = "";
-
-		/**
-		 * Flush mode for the Redis sessions.
-		 */
-		private RedisFlushMode flushMode = RedisFlushMode.ON_SAVE;
-
-		public String getNamespace() {
-			return this.namespace;
-		}
-
-		public void setNamespace(String namespace) {
-			this.namespace = namespace;
-		}
-
-		public RedisFlushMode getFlushMode() {
-			return this.flushMode;
-		}
-
-		public void setFlushMode(RedisFlushMode flushMode) {
-			this.flushMode = flushMode;
+		public void setFilterDispatcherTypes(Set<DispatcherType> filterDispatcherTypes) {
+			this.filterDispatcherTypes = filterDispatcherTypes;
 		}
 
 	}

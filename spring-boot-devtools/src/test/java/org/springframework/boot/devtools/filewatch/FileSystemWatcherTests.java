@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package org.springframework.boot.devtools.filewatch;
 
 import java.io.File;
-import java.io.FileFilter;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -155,10 +154,12 @@ public class FileSystemWatcherTests {
 
 	@Test
 	public void waitsForPollingInterval() throws Exception {
-		setupWatcher(100, 1);
+		setupWatcher(10, 1);
 		File folder = startWithNewFolder();
 		touch(new File(folder, "test1.txt"));
-		Thread.sleep(200);
+		while (this.changes.size() != 1) {
+			Thread.sleep(10);
+		}
 		touch(new File(folder, "test2.txt"));
 		this.watcher.stopAfter(1);
 		assertThat(this.changes.size()).isEqualTo(2);
@@ -217,14 +218,9 @@ public class FileSystemWatcherTests {
 	@Test
 	public void multipleListeners() throws Exception {
 		File folder = this.temp.newFolder();
-		final Set<ChangedFiles> listener2Changes = new LinkedHashSet<ChangedFiles>();
+		final Set<ChangedFiles> listener2Changes = new LinkedHashSet<>();
 		this.watcher.addSourceFolder(folder);
-		this.watcher.addListener(new FileChangeListener() {
-			@Override
-			public void onChange(Set<ChangedFiles> changeSet) {
-				listener2Changes.addAll(changeSet);
-			}
-		});
+		this.watcher.addListener(listener2Changes::addAll);
 		this.watcher.start();
 		File file = touch(new File(folder, "test.txt"));
 		this.watcher.stopAfter(1);
@@ -247,7 +243,7 @@ public class FileSystemWatcherTests {
 		this.watcher.stopAfter(1);
 		ChangedFiles changedFiles = getSingleChangedFiles();
 		Set<ChangedFile> actual = changedFiles.getFiles();
-		Set<ChangedFile> expected = new HashSet<ChangedFile>();
+		Set<ChangedFile> expected = new HashSet<>();
 		expected.add(new ChangedFile(folder, modify, Type.MODIFY));
 		expected.add(new ChangedFile(folder, delete, Type.DELETE));
 		expected.add(new ChangedFile(folder, add, Type.ADD));
@@ -260,14 +256,8 @@ public class FileSystemWatcherTests {
 		File file = touch(new File(folder, "file.txt"));
 		File trigger = touch(new File(folder, "trigger.txt"));
 		this.watcher.addSourceFolder(folder);
-		this.watcher.setTriggerFilter(new FileFilter() {
-
-			@Override
-			public boolean accept(File file) {
-				return file.getName().equals("trigger.txt");
-			}
-
-		});
+		this.watcher.setTriggerFilter(
+				(candidate) -> candidate.getName().equals("trigger.txt"));
 		this.watcher.start();
 		FileCopyUtils.copy("abc".getBytes(), file);
 		Thread.sleep(100);
@@ -276,19 +266,15 @@ public class FileSystemWatcherTests {
 		this.watcher.stopAfter(1);
 		ChangedFiles changedFiles = getSingleChangedFiles();
 		Set<ChangedFile> actual = changedFiles.getFiles();
-		Set<ChangedFile> expected = new HashSet<ChangedFile>();
+		Set<ChangedFile> expected = new HashSet<>();
 		expected.add(new ChangedFile(folder, file, Type.MODIFY));
 		assertThat(actual).isEqualTo(expected);
 	}
 
 	private void setupWatcher(long pollingInterval, long quietPeriod) {
 		this.watcher = new FileSystemWatcher(false, pollingInterval, quietPeriod);
-		this.watcher.addListener(new FileChangeListener() {
-			@Override
-			public void onChange(Set<ChangedFiles> changeSet) {
-				FileSystemWatcherTests.this.changes.add(changeSet);
-			}
-		});
+		this.watcher.addListener(
+				(changeSet) -> FileSystemWatcherTests.this.changes.add(changeSet));
 	}
 
 	private File startWithNewFolder() throws IOException {

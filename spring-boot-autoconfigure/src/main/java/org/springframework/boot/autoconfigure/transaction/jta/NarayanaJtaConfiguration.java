@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,12 +22,17 @@ import javax.jms.Message;
 import javax.transaction.TransactionManager;
 import javax.transaction.UserTransaction;
 
+import com.arjuna.ats.arjuna.recovery.RecoveryManager;
 import com.arjuna.ats.jbossatx.jta.RecoveryManagerService;
+import org.jboss.narayana.jta.jms.TransactionHelper;
 import org.jboss.tm.XAResourceRecoveryRegistry;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationHome;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.transaction.TransactionManagerCustomizers;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jta.XAConnectionFactoryWrapper;
 import org.springframework.boot.jta.XADataSourceWrapper;
 import org.springframework.boot.jta.narayana.NarayanaBeanFactoryPostProcessor;
@@ -47,18 +52,25 @@ import org.springframework.util.StringUtils;
  * JTA Configuration for <a href="http://narayana.io/">Narayana</a>.
  *
  * @author Gytis Trikleris
+ * @author Kazuki Shimizu
  * @since 1.4.0
  */
 @Configuration
 @ConditionalOnClass({ JtaTransactionManager.class,
 		com.arjuna.ats.jta.UserTransaction.class, XAResourceRecoveryRegistry.class })
 @ConditionalOnMissingBean(PlatformTransactionManager.class)
+@EnableConfigurationProperties(JtaProperties.class)
 public class NarayanaJtaConfiguration {
 
 	private final JtaProperties jtaProperties;
 
-	public NarayanaJtaConfiguration(JtaProperties jtaProperties) {
+	private final TransactionManagerCustomizers transactionManagerCustomizers;
+
+	public NarayanaJtaConfiguration(JtaProperties jtaProperties,
+			ObjectProvider<TransactionManagerCustomizers> transactionManagerCustomizers) {
 		this.jtaProperties = jtaProperties;
+		this.transactionManagerCustomizers = transactionManagerCustomizers
+				.getIfAvailable();
 	}
 
 	@Bean
@@ -104,10 +116,12 @@ public class NarayanaJtaConfiguration {
 	@Bean
 	@DependsOn("narayanaConfiguration")
 	public RecoveryManagerService narayanaRecoveryManagerService() {
+		RecoveryManager.delayRecoveryManagerThread();
 		return new RecoveryManagerService();
 	}
 
 	@Bean
+	@ConditionalOnMissingBean
 	public NarayanaRecoveryManagerBean narayanaRecoveryManager(
 			RecoveryManagerService recoveryManagerService) {
 		return new NarayanaRecoveryManagerBean(recoveryManagerService);
@@ -116,7 +130,12 @@ public class NarayanaJtaConfiguration {
 	@Bean
 	public JtaTransactionManager transactionManager(UserTransaction userTransaction,
 			TransactionManager transactionManager) {
-		return new JtaTransactionManager(userTransaction, transactionManager);
+		JtaTransactionManager jtaTransactionManager = new JtaTransactionManager(
+				userTransaction, transactionManager);
+		if (this.transactionManagerCustomizers != null) {
+			this.transactionManagerCustomizers.customize(jtaTransactionManager);
+		}
+		return jtaTransactionManager;
 	}
 
 	@Bean
@@ -135,7 +154,7 @@ public class NarayanaJtaConfiguration {
 	}
 
 	@Configuration
-	@ConditionalOnClass(Message.class)
+	@ConditionalOnClass({ Message.class, TransactionHelper.class })
 	static class NarayanaJtaJmsConfiguration {
 
 		@Bean

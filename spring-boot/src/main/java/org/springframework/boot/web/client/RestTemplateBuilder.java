@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.springframework.boot.web.client;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -64,15 +65,13 @@ public class RestTemplateBuilder {
 	private static final Map<String, String> REQUEST_FACTORY_CANDIDATES;
 
 	static {
-		Map<String, String> candidates = new LinkedHashMap<String, String>();
+		Map<String, String> candidates = new LinkedHashMap<>();
 		candidates.put("org.apache.http.client.HttpClient",
 				"org.springframework.http.client.HttpComponentsClientHttpRequestFactory");
 		candidates.put("okhttp3.OkHttpClient",
 				"org.springframework.http.client.OkHttp3ClientHttpRequestFactory");
 		candidates.put("com.squareup.okhttp.OkHttpClient",
 				"org.springframework.http.client.OkHttpClientHttpRequestFactory");
-		candidates.put("io.netty.channel.EventLoopGroup",
-				"org.springframework.http.client.Netty4ClientHttpRequestFactory");
 		REQUEST_FACTORY_CANDIDATES = Collections.unmodifiableMap(candidates);
 	}
 
@@ -110,8 +109,8 @@ public class RestTemplateBuilder {
 		this.uriTemplateHandler = null;
 		this.errorHandler = null;
 		this.basicAuthorization = null;
-		this.restTemplateCustomizers = Collections.unmodifiableSet(
-				new LinkedHashSet<RestTemplateCustomizer>(Arrays.asList(customizers)));
+		this.restTemplateCustomizers = Collections
+				.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(customizers)));
 		this.requestFactoryCustomizers = Collections.<RequestFactoryCustomizer>emptySet();
 		this.interceptors = Collections.<ClientHttpRequestInterceptor>emptySet();
 	}
@@ -236,8 +235,8 @@ public class RestTemplateBuilder {
 	 */
 	public RestTemplateBuilder defaultMessageConverters() {
 		return new RestTemplateBuilder(this.detectRequestFactory, this.rootUri,
-				Collections.unmodifiableSet(new LinkedHashSet<HttpMessageConverter<?>>(
-						new RestTemplate().getMessageConverters())),
+				Collections.unmodifiableSet(
+						new LinkedHashSet<>(new RestTemplate().getMessageConverters())),
 				this.requestFactory, this.uriTemplateHandler, this.errorHandler,
 				this.basicAuthorization, this.restTemplateCustomizers,
 				this.requestFactoryCustomizers, this.interceptors);
@@ -273,8 +272,8 @@ public class RestTemplateBuilder {
 		return new RestTemplateBuilder(this.detectRequestFactory, this.rootUri,
 				this.messageConverters, this.requestFactory, this.uriTemplateHandler,
 				this.errorHandler, this.basicAuthorization, this.restTemplateCustomizers,
-				this.requestFactoryCustomizers, Collections.unmodifiableSet(
-						new LinkedHashSet<ClientHttpRequestInterceptor>(interceptors)));
+				this.requestFactoryCustomizers,
+				Collections.unmodifiableSet(new LinkedHashSet<>(interceptors)));
 	}
 
 	/**
@@ -317,7 +316,19 @@ public class RestTemplateBuilder {
 	public RestTemplateBuilder requestFactory(
 			Class<? extends ClientHttpRequestFactory> requestFactory) {
 		Assert.notNull(requestFactory, "RequestFactory must not be null");
-		return requestFactory(BeanUtils.instantiateClass(requestFactory));
+		return requestFactory(createRequestFactory(requestFactory));
+	}
+
+	private ClientHttpRequestFactory createRequestFactory(
+			Class<? extends ClientHttpRequestFactory> requestFactory) {
+		try {
+			Constructor<?> constructor = requestFactory.getDeclaredConstructor();
+			constructor.setAccessible(true);
+			return (ClientHttpRequestFactory) constructor.newInstance();
+		}
+		catch (Exception ex) {
+			throw new IllegalStateException(ex);
+		}
 	}
 
 	/**
@@ -450,7 +461,6 @@ public class RestTemplateBuilder {
 	/**
 	 * Sets the connect timeout in milliseconds on the underlying
 	 * {@link ClientHttpRequestFactory}.
-	 *
 	 * @param connectTimeout the connect timeout in milliseconds
 	 * @return a new builder instance.
 	 */
@@ -466,7 +476,6 @@ public class RestTemplateBuilder {
 	/**
 	 * Sets the read timeout in milliseconds on the underlying
 	 * {@link ClientHttpRequestFactory}.
-	 *
 	 * @param readTimeout the read timeout in milliseconds
 	 * @return a new builder instance.
 	 */
@@ -514,8 +523,7 @@ public class RestTemplateBuilder {
 	public <T extends RestTemplate> T configure(T restTemplate) {
 		configureRequestFactory(restTemplate);
 		if (!CollectionUtils.isEmpty(this.messageConverters)) {
-			restTemplate.setMessageConverters(
-					new ArrayList<HttpMessageConverter<?>>(this.messageConverters));
+			restTemplate.setMessageConverters(new ArrayList<>(this.messageConverters));
 		}
 		if (this.uriTemplateHandler != null) {
 			restTemplate.setUriTemplateHandler(this.uriTemplateHandler);
@@ -588,14 +596,14 @@ public class RestTemplateBuilder {
 	}
 
 	private <T> Set<T> append(Set<T> set, T addition) {
-		Set<T> result = new LinkedHashSet<T>(
+		Set<T> result = new LinkedHashSet<>(
 				set == null ? Collections.<T>emptySet() : set);
 		result.add(addition);
 		return Collections.unmodifiableSet(result);
 	}
 
 	private <T> Set<T> append(Set<T> set, Collection<? extends T> additions) {
-		Set<T> result = new LinkedHashSet<T>(
+		Set<T> result = new LinkedHashSet<>(
 				set == null ? Collections.<T>emptySet() : set);
 		result.addAll(additions);
 		return Collections.unmodifiableSet(result);

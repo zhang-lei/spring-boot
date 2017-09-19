@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,10 +20,10 @@ import org.junit.After;
 import org.junit.Test;
 
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
-import org.springframework.boot.autoconfigure.PropertyPlaceholderAutoConfiguration;
-import org.springframework.boot.autoconfigure.web.HttpMessageConvertersAutoConfiguration;
-import org.springframework.boot.autoconfigure.web.WebMvcAutoConfiguration;
-import org.springframework.boot.test.util.EnvironmentTestUtils;
+import org.springframework.boot.autoconfigure.context.PropertyPlaceholderAutoConfiguration;
+import org.springframework.boot.autoconfigure.http.HttpMessageConvertersAutoConfiguration;
+import org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration;
+import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.mobile.device.site.SitePreferenceHandlerInterceptor;
@@ -67,8 +67,8 @@ public class SitePreferenceAutoConfigurationTests {
 	@Test
 	public void sitePreferenceHandlerInterceptorEnabled() throws Exception {
 		this.context = new AnnotationConfigWebApplicationContext();
-		EnvironmentTestUtils.addEnvironment(this.context,
-				"spring.mobile.sitepreference.enabled:true");
+		TestPropertyValues.of("spring.mobile.sitepreference.enabled:true")
+				.applyTo(this.context);
 		this.context.register(SitePreferenceAutoConfiguration.class);
 		this.context.refresh();
 		assertThat(this.context.getBean(SitePreferenceHandlerInterceptor.class))
@@ -78,8 +78,8 @@ public class SitePreferenceAutoConfigurationTests {
 	@Test(expected = NoSuchBeanDefinitionException.class)
 	public void sitePreferenceHandlerInterceptorDisabled() {
 		this.context = new AnnotationConfigWebApplicationContext();
-		EnvironmentTestUtils.addEnvironment(this.context,
-				"spring.mobile.sitepreference.enabled:false");
+		TestPropertyValues.of("spring.mobile.sitepreference.enabled:false")
+				.applyTo(this.context);
 		this.context.register(SitePreferenceAutoConfiguration.class);
 		this.context.refresh();
 		this.context.getBean(SitePreferenceHandlerInterceptor.class);
@@ -98,8 +98,8 @@ public class SitePreferenceAutoConfigurationTests {
 	@Test
 	public void sitePreferenceMethodArgumentResolverEnabled() throws Exception {
 		this.context = new AnnotationConfigWebApplicationContext();
-		EnvironmentTestUtils.addEnvironment(this.context,
-				"spring.mobile.sitepreference.enabled:true");
+		TestPropertyValues.of("spring.mobile.sitepreference.enabled:true")
+				.applyTo(this.context);
 		this.context.register(SitePreferenceAutoConfiguration.class);
 		this.context.refresh();
 		assertThat(
@@ -110,8 +110,8 @@ public class SitePreferenceAutoConfigurationTests {
 	@Test(expected = NoSuchBeanDefinitionException.class)
 	public void sitePreferenceMethodArgumentResolverDisabled() {
 		this.context = new AnnotationConfigWebApplicationContext();
-		EnvironmentTestUtils.addEnvironment(this.context,
-				"spring.mobile.sitepreference.enabled:false");
+		TestPropertyValues.of("spring.mobile.sitepreference.enabled:false")
+				.applyTo(this.context);
 		this.context.register(SitePreferenceAutoConfiguration.class);
 		this.context.refresh();
 		this.context.getBean(SitePreferenceHandlerMethodArgumentResolver.class);

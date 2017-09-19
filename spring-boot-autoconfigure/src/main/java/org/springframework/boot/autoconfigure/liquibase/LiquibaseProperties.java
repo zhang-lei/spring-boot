@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2015 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,10 @@ package org.springframework.boot.autoconfigure.liquibase;
 import java.io.File;
 import java.util.Map;
 
-import javax.validation.constraints.NotNull;
-
 import liquibase.integration.spring.SpringLiquibase;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.Assert;
 
 /**
  * Configuration properties to configure {@link SpringLiquibase}.
@@ -31,13 +30,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @author Marcel Overdijk
  * @since 1.1.0
  */
-@ConfigurationProperties(prefix = "liquibase", ignoreUnknownFields = false)
+@ConfigurationProperties(prefix = "spring.liquibase", ignoreUnknownFields = false)
 public class LiquibaseProperties {
 
 	/**
 	 * Change log configuration path.
 	 */
-	@NotNull
 	private String changeLog = "classpath:/db/changelog/db.changelog-master.yaml";
 
 	/**
@@ -101,6 +99,7 @@ public class LiquibaseProperties {
 	}
 
 	public void setChangeLog(String changeLog) {
+		Assert.notNull(changeLog, "ChangeLog must not be null");
 		this.changeLog = changeLog;
 	}
 

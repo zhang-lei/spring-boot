@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,9 @@
 package org.springframework.boot.autoconfigure.diagnostics.analyzer;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.Test;
 
@@ -32,7 +34,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.diagnostics.FailureAnalysis;
 import org.springframework.boot.diagnostics.LoggingFailureAnalysisReporter;
-import org.springframework.boot.test.util.EnvironmentTestUtils;
+import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -74,6 +76,30 @@ public class NoSuchBeanDefinitionFailureAnalyzerTests {
 		FailureAnalysis analysis = analyzeFailure(
 				createFailure(StringPropertyTypeConfiguration.class));
 		assertDescriptionConstructorMissingType(analysis, StringHandler.class, 0,
+				String.class);
+		assertBeanMethodDisabled(analysis,
+				"did not find property 'spring.string.enabled'",
+				TestPropertyAutoConfiguration.class, "string");
+		assertActionMissingType(analysis, String.class);
+	}
+
+	@Test
+	public void failureAnalysisForMissingCollectionType() throws Exception {
+		FailureAnalysis analysis = analyzeFailure(
+				createFailure(StringCollectionConfiguration.class));
+		assertDescriptionConstructorMissingType(analysis, StringCollectionHandler.class,
+				0, String.class);
+		assertBeanMethodDisabled(analysis,
+				"did not find property 'spring.string.enabled'",
+				TestPropertyAutoConfiguration.class, "string");
+		assertActionMissingType(analysis, String.class);
+	}
+
+	@Test
+	public void failureAnalysisForMissingMapType() throws Exception {
+		FailureAnalysis analysis = analyzeFailure(
+				createFailure(StringMapConfiguration.class));
+		assertDescriptionConstructorMissingType(analysis, StringMapHandler.class, 0,
 				String.class);
 		assertBeanMethodDisabled(analysis,
 				"did not find property 'spring.string.enabled'",
@@ -140,8 +166,6 @@ public class NoSuchBeanDefinitionFailureAnalyzerTests {
 		assertThat(analysis.getDescription()).startsWith(String.format(
 				"Constructor in %s required a bean named '%s' that could not be found",
 				StringNameHandler.class.getName(), "test-string"));
-		assertThat(analysis.getDescription().contains(
-				"No matching auto-configuration has been found for this bean name."));
 		assertThat(analysis.getAction()).startsWith(String.format(
 				"Consider defining a bean named '%s' in your configuration.",
 				"test-string"));
@@ -201,7 +225,7 @@ public class NoSuchBeanDefinitionFailureAnalyzerTests {
 			Class<?>... classes) {
 		ConditionEvaluationReport report = (ConditionEvaluationReport) new DirectFieldAccessor(
 				analyzer).getPropertyValue("report");
-		List<String> exclusions = new ArrayList<String>(report.getExclusions());
+		List<String> exclusions = new ArrayList<>(report.getExclusions());
 		for (Class<?> c : classes) {
 			exclusions.add(c.getName());
 		}
@@ -209,19 +233,15 @@ public class NoSuchBeanDefinitionFailureAnalyzerTests {
 	}
 
 	private FatalBeanException createFailure(Class<?> config, String... environment) {
-		AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
-		this.analyzer.setBeanFactory(context.getBeanFactory());
-		EnvironmentTestUtils.addEnvironment(context, environment);
-		context.register(config);
-		try {
+		try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+			this.analyzer.setBeanFactory(context.getBeanFactory());
+			TestPropertyValues.of(environment).applyTo(context);
+			context.register(config);
 			context.refresh();
 			return null;
 		}
 		catch (FatalBeanException ex) {
 			return ex;
-		}
-		finally {
-			context.close();
 		}
 	}
 
@@ -237,6 +257,20 @@ public class NoSuchBeanDefinitionFailureAnalyzerTests {
 	@ImportAutoConfiguration(TestPropertyAutoConfiguration.class)
 	@Import(StringHandler.class)
 	protected static class StringPropertyTypeConfiguration {
+
+	}
+
+	@Configuration
+	@ImportAutoConfiguration(TestPropertyAutoConfiguration.class)
+	@Import(StringCollectionHandler.class)
+	protected static class StringCollectionConfiguration {
+
+	}
+
+	@Configuration
+	@ImportAutoConfiguration(TestPropertyAutoConfiguration.class)
+	@Import(StringMapHandler.class)
+	protected static class StringMapConfiguration {
 
 	}
 
@@ -326,6 +360,20 @@ public class NoSuchBeanDefinitionFailureAnalyzerTests {
 
 		public StringNameHandler(BeanFactory beanFactory) {
 			beanFactory.getBean("test-string");
+		}
+
+	}
+
+	protected static class StringCollectionHandler {
+
+		public StringCollectionHandler(Collection<String> collection) {
+		}
+
+	}
+
+	protected static class StringMapHandler {
+
+		public StringMapHandler(Map<String, String> map) {
 		}
 
 	}

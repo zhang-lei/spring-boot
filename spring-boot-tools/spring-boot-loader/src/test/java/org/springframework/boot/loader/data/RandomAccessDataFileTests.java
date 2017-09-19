@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +18,14 @@ package org.springframework.boot.loader.data;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Queue;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -35,10 +36,18 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.rules.TemporaryFolder;
+import org.mockito.Mockito;
 
 import org.springframework.boot.loader.data.RandomAccessData.ResourceAccess;
+import org.springframework.boot.loader.data.RandomAccessDataFile.FilePool;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.BDDMockito.willAnswer;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.spy;
 
 /**
  * Tests for {@link RandomAccessDataFile}.
@@ -87,28 +96,28 @@ public class RandomAccessDataFileTests {
 	@Test
 	public void fileNotNull() throws Exception {
 		this.thrown.expect(IllegalArgumentException.class);
-		this.thrown.equals("File must not be null");
+		this.thrown.expectMessage("File must not be null");
 		new RandomAccessDataFile(null);
 	}
 
 	@Test
 	public void fileExists() throws Exception {
 		this.thrown.expect(IllegalArgumentException.class);
-		this.thrown.equals("File must exist");
+		this.thrown.expectMessage("File must exist");
 		new RandomAccessDataFile(new File("/does/not/exist"));
 	}
 
 	@Test
 	public void fileNotNullWithConcurrentReads() throws Exception {
 		this.thrown.expect(IllegalArgumentException.class);
-		this.thrown.equals("File must not be null");
+		this.thrown.expectMessage("File must not be null");
 		new RandomAccessDataFile(null, 1);
 	}
 
 	@Test
 	public void fileExistsWithConcurrentReads() throws Exception {
 		this.thrown.expect(IllegalArgumentException.class);
-		this.thrown.equals("File must exist");
+		this.thrown.expectMessage("File must exist");
 		new RandomAccessDataFile(new File("/does/not/exist"), 1);
 	}
 
@@ -276,19 +285,14 @@ public class RandomAccessDataFileTests {
 	@Test
 	public void concurrentReads() throws Exception {
 		ExecutorService executorService = Executors.newFixedThreadPool(20);
-		List<Future<Boolean>> results = new ArrayList<Future<Boolean>>();
+		List<Future<Boolean>> results = new ArrayList<>();
 		for (int i = 0; i < 100; i++) {
-			results.add(executorService.submit(new Callable<Boolean>() {
-
-				@Override
-				public Boolean call() throws Exception {
-					InputStream subsectionInputStream = RandomAccessDataFileTests.this.file
-							.getSubsection(0, 256)
-							.getInputStream(ResourceAccess.PER_READ);
-					byte[] b = new byte[256];
-					subsectionInputStream.read(b);
-					return Arrays.equals(b, BYTES);
-				}
+			results.add(executorService.submit(() -> {
+				InputStream subsectionInputStream = RandomAccessDataFileTests.this.file
+						.getSubsection(0, 256).getInputStream(ResourceAccess.PER_READ);
+				byte[] b = new byte[256];
+				subsectionInputStream.read(b);
+				return Arrays.equals(b, BYTES);
 			}));
 		}
 		for (Future<Boolean> future : results) {
@@ -307,6 +311,34 @@ public class RandomAccessDataFileTests {
 		filesField.setAccessible(true);
 		Queue<?> queue = (Queue<?>) filesField.get(filePool);
 		assertThat(queue.size()).isEqualTo(0);
+	}
+
+	@Test
+	public void seekFailuresDoNotPreventSubsequentReads() throws Exception {
+		FilePool filePool = (FilePool) ReflectionTestUtils.getField(this.file,
+				"filePool");
+		FilePool spiedPool = spy(filePool);
+		ReflectionTestUtils.setField(this.file, "filePool", spiedPool);
+		willAnswer((invocation) -> {
+			RandomAccessFile originalFile = (RandomAccessFile) invocation
+					.callRealMethod();
+			if (Mockito.mockingDetails(originalFile).isSpy()) {
+				return originalFile;
+			}
+			RandomAccessFile spiedFile = spy(originalFile);
+			willThrow(new IOException("Seek failed")).given(spiedFile).seek(anyLong());
+			return spiedFile;
+		}).given(spiedPool).acquire();
+
+		for (int i = 0; i < 5; i++) {
+			try {
+				this.file.getInputStream(ResourceAccess.PER_READ).read();
+				fail("Read should fail due to exception from seek");
+			}
+			catch (IOException ex) {
+
+			}
+		}
 	}
 
 }

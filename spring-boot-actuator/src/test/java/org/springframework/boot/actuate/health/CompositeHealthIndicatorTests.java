@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@ public class CompositeHealthIndicatorTests {
 
 	@Test
 	public void createWithIndicators() throws Exception {
-		Map<String, HealthIndicator> indicators = new HashMap<String, HealthIndicator>();
+		Map<String, HealthIndicator> indicators = new HashMap<>();
 		indicators.put("one", this.one);
 		indicators.put("two", this.two);
 		CompositeHealthIndicator composite = new CompositeHealthIndicator(
@@ -78,7 +78,7 @@ public class CompositeHealthIndicatorTests {
 
 	@Test
 	public void createWithIndicatorsAndAdd() throws Exception {
-		Map<String, HealthIndicator> indicators = new HashMap<String, HealthIndicator>();
+		Map<String, HealthIndicator> indicators = new HashMap<>();
 		indicators.put("one", this.one);
 		indicators.put("two", this.two);
 		CompositeHealthIndicator composite = new CompositeHealthIndicator(
@@ -110,7 +110,7 @@ public class CompositeHealthIndicatorTests {
 
 	@Test
 	public void testSerialization() throws Exception {
-		Map<String, HealthIndicator> indicators = new HashMap<String, HealthIndicator>();
+		Map<String, HealthIndicator> indicators = new HashMap<>();
 		indicators.put("db1", this.one);
 		indicators.put("db2", this.two);
 		CompositeHealthIndicator innerComposite = new CompositeHealthIndicator(
@@ -120,10 +120,11 @@ public class CompositeHealthIndicatorTests {
 		composite.addHealthIndicator("db", innerComposite);
 		Health result = composite.health();
 		ObjectMapper mapper = new ObjectMapper();
-		assertThat(mapper.writeValueAsString(result))
-				.isEqualTo("{\"status\":\"UNKNOWN\",\"db\":{\"status\":\"UNKNOWN\""
-						+ ",\"db1\":{\"status\":\"UNKNOWN\",\"1\":\"1\"},"
-						+ "\"db2\":{\"status\":\"UNKNOWN\",\"2\":\"2\"}}}");
+		assertThat(mapper.writeValueAsString(result)).isEqualTo(
+				"{\"status\":\"UNKNOWN\",\"details\":{\"db\":{\"status\":\"UNKNOWN\""
+						+ ",\"details\":{\"db1\":{\"status\":\"UNKNOWN\",\"details\""
+						+ ":{\"1\":\"1\"}},\"db2\":{\"status\":\"UNKNOWN\",\"details\""
+						+ ":{\"2\":\"2\"}}}}}}");
 	}
 
 }

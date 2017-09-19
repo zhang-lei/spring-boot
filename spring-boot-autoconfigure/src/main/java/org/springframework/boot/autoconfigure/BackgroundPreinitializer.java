@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,18 @@
 
 package org.springframework.boot.autoconfigure;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import javax.validation.Validation;
 
 import org.apache.catalina.mbeans.MBeanFactory;
 
 import org.springframework.boot.context.event.ApplicationEnvironmentPreparedEvent;
-import org.springframework.boot.logging.LoggingApplicationListener;
+import org.springframework.boot.context.event.ApplicationFailedEvent;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.boot.context.event.SpringApplicationEvent;
+import org.springframework.boot.context.logging.LoggingApplicationListener;
 import org.springframework.context.ApplicationListener;
 import org.springframework.core.annotation.Order;
 import org.springframework.format.support.DefaultFormattingConversionService;
@@ -38,10 +44,32 @@ import org.springframework.http.converter.support.AllEncompassingFormHttpMessage
  */
 @Order(LoggingApplicationListener.DEFAULT_ORDER + 1)
 public class BackgroundPreinitializer
-		implements ApplicationListener<ApplicationEnvironmentPreparedEvent> {
+		implements ApplicationListener<SpringApplicationEvent> {
+
+	private static final AtomicBoolean preinitializationStarted = new AtomicBoolean(
+			false);
+
+	private static final CountDownLatch preinitializationComplete = new CountDownLatch(1);
 
 	@Override
-	public void onApplicationEvent(ApplicationEnvironmentPreparedEvent event) {
+	public void onApplicationEvent(SpringApplicationEvent event) {
+		if (event instanceof ApplicationEnvironmentPreparedEvent) {
+			if (preinitializationStarted.compareAndSet(false, true)) {
+				performPreinitialization();
+			}
+		}
+		if (event instanceof ApplicationReadyEvent
+				|| event instanceof ApplicationFailedEvent) {
+			try {
+				preinitializationComplete.await();
+			}
+			catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+			}
+		}
+	}
+
+	private void performPreinitialization() {
 		try {
 			Thread thread = new Thread(new Runnable() {
 
@@ -52,6 +80,7 @@ public class BackgroundPreinitializer
 					runSafely(new ValidationInitializer());
 					runSafely(new JacksonInitializer());
 					runSafely(new ConversionServiceInitializer());
+					preinitializationComplete.countDown();
 				}
 
 				public void runSafely(Runnable runnable) {
@@ -70,6 +99,7 @@ public class BackgroundPreinitializer
 			// This will fail on GAE where creating threads is prohibited. We can safely
 			// continue but startup will be slightly slower as the initialization will now
 			// happen on the main thread.
+			preinitializationComplete.countDown();
 		}
 	}
 

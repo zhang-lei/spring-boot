@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.springframework.boot.autoconfigure.jdbc;
 
 import java.nio.charset.Charset;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -27,7 +28,9 @@ import org.springframework.beans.factory.BeanClassLoaderAware;
 import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.boot.jdbc.DatabaseDriver;
+import org.springframework.boot.jdbc.EmbeddedDatabaseConnection;
 import org.springframework.context.EnvironmentAware;
 import org.springframework.core.env.Environment;
 import org.springframework.util.Assert;
@@ -106,9 +109,9 @@ public class DataSourceProperties
 	private String platform = "all";
 
 	/**
-	 * Schema (DDL) script resource reference.
+	 * Schema (DDL) script resource references.
 	 */
-	private String schema;
+	private List<String> schema;
 
 	/**
 	 * User of the database to execute DDL scripts (if different).
@@ -121,9 +124,9 @@ public class DataSourceProperties
 	private String schemaPassword;
 
 	/**
-	 * Data (DML) script resource reference.
+	 * Data (DML) script resource references.
 	 */
-	private String data;
+	private List<String> data;
 
 	/**
 	 * User of the database to execute DML scripts.
@@ -388,11 +391,11 @@ public class DataSourceProperties
 		this.platform = platform;
 	}
 
-	public String getSchema() {
+	public List<String> getSchema() {
 		return this.schema;
 	}
 
-	public void setSchema(String schema) {
+	public void setSchema(List<String> schema) {
 		this.schema = schema;
 	}
 
@@ -412,12 +415,12 @@ public class DataSourceProperties
 		this.schemaPassword = schemaPassword;
 	}
 
-	public String getData() {
+	public List<String> getData() {
 		return this.data;
 	}
 
-	public void setData(String script) {
-		this.data = script;
+	public void setData(List<String> data) {
+		this.data = data;
 	}
 
 	public String getDataUsername() {
@@ -485,7 +488,7 @@ public class DataSourceProperties
 		/**
 		 * Properties to pass to the XA data source.
 		 */
-		private Map<String, String> properties = new LinkedHashMap<String, String>();
+		private Map<String, String> properties = new LinkedHashMap<>();
 
 		public String getDataSourceClassName() {
 			return this.dataSourceClassName;

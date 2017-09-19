@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,12 +34,15 @@ import java.util.logging.Logger;
  * {@link URLStreamHandler} for Spring Boot loader {@link JarFile}s.
  *
  * @author Phillip Webb
+ * @author Andy Wilkinson
  * @see JarFile#registerUrlProtocolHandler()
  */
 public class Handler extends URLStreamHandler {
 
 	// NOTE: in order to be found as a URL protocol handler, this class must be public,
 	// must be named Handler and must be in a package ending '.jar'
+
+	private static final String JAR_PROTOCOL = "jar:";
 
 	private static final String FILE_PROTOCOL = "file:";
 
@@ -65,10 +68,8 @@ public class Handler extends URLStreamHandler {
 	private static SoftReference<Map<File, JarFile>> rootFileCache;
 
 	static {
-		rootFileCache = new SoftReference<Map<File, JarFile>>(null);
+		rootFileCache = new SoftReference<>(null);
 	}
-
-	private final Logger logger = Logger.getLogger(getClass().getName());
 
 	private final JarFile jarFile;
 
@@ -102,14 +103,26 @@ public class Handler extends URLStreamHandler {
 		}
 		catch (Exception ex) {
 			if (reason instanceof IOException) {
-				this.logger.log(Level.FINEST, "Unable to open fallback handler", ex);
+				log(false, "Unable to open fallback handler", ex);
 				throw (IOException) reason;
 			}
-			this.logger.log(Level.WARNING, "Unable to open fallback handler", ex);
+			log(true, "Unable to open fallback handler", ex);
 			if (reason instanceof RuntimeException) {
 				throw (RuntimeException) reason;
 			}
 			throw new IllegalStateException(reason);
+		}
+	}
+
+	private void log(boolean warning, String message, Exception cause) {
+		try {
+			Logger.getLogger(getClass().getName())
+					.log((warning ? Level.WARNING : Level.FINEST), message, cause);
+		}
+		catch (Exception ex) {
+			if (warning) {
+				System.err.println("WARNING: " + message);
+			}
 		}
 	}
 
@@ -138,6 +151,143 @@ public class Handler extends URLStreamHandler {
 		}
 		OPEN_CONNECTION_METHOD.setAccessible(true);
 		return (URLConnection) OPEN_CONNECTION_METHOD.invoke(handler, url);
+	}
+
+	@Override
+	protected void parseURL(URL context, String spec, int start, int limit) {
+		if (spec.toLowerCase().startsWith(JAR_PROTOCOL)) {
+			setFile(context, getFileFromSpec(spec.substring(start, limit)));
+		}
+		else {
+			setFile(context, getFileFromContext(context, spec.substring(start, limit)));
+		}
+	}
+
+	private String getFileFromSpec(String spec) {
+		int separatorIndex = spec.lastIndexOf("!/");
+		if (separatorIndex == -1) {
+			throw new IllegalArgumentException("No !/ in spec '" + spec + "'");
+		}
+		try {
+			new URL(spec.substring(0, separatorIndex));
+			return spec;
+		}
+		catch (MalformedURLException ex) {
+			throw new IllegalArgumentException("Invalid spec URL '" + spec + "'", ex);
+		}
+	}
+
+	private String getFileFromContext(URL context, String spec) {
+		String file = context.getFile();
+		if (spec.startsWith("/")) {
+			return trimToJarRoot(file) + SEPARATOR + spec.substring(1);
+		}
+		if (file.endsWith("/")) {
+			return file + spec;
+		}
+		int lastSlashIndex = file.lastIndexOf('/');
+		if (lastSlashIndex == -1) {
+			throw new IllegalArgumentException(
+					"No / found in context URL's file '" + file + "'");
+		}
+		return file.substring(0, lastSlashIndex + 1) + spec;
+	}
+
+	private String trimToJarRoot(String file) {
+		int lastSeparatorIndex = file.lastIndexOf(SEPARATOR);
+		if (lastSeparatorIndex == -1) {
+			throw new IllegalArgumentException(
+					"No !/ found in context URL's file '" + file + "'");
+		}
+		return file.substring(0, lastSeparatorIndex);
+	}
+
+	private void setFile(URL context, String file) {
+		setURL(context, JAR_PROTOCOL, null, -1, null, null, normalize(file), null, null);
+	}
+
+	private String normalize(String file) {
+		int afterLastSeparatorIndex = file.lastIndexOf(SEPARATOR) + SEPARATOR.length();
+		String afterSeparator = file.substring(afterLastSeparatorIndex);
+		afterSeparator = replaceParentDir(afterSeparator);
+		afterSeparator = replaceCurrentDir(afterSeparator);
+		return file.substring(0, afterLastSeparatorIndex) + afterSeparator;
+	}
+
+	private String replaceParentDir(String file) {
+		int parentDirIndex;
+		while ((parentDirIndex = file.indexOf("/../")) >= 0) {
+			int precedingSlashIndex = file.lastIndexOf('/', parentDirIndex - 1);
+			if (precedingSlashIndex >= 0) {
+				file = file.substring(0, precedingSlashIndex)
+						+ file.substring(parentDirIndex + 3);
+			}
+			else {
+				file = file.substring(parentDirIndex + 4);
+			}
+		}
+		return file;
+	}
+
+	private String replaceCurrentDir(String file) {
+		return file.replace("/./", "/");
+	}
+
+	@Override
+	protected int hashCode(URL u) {
+		return hashCode(u.getProtocol(), u.getFile());
+	}
+
+	private int hashCode(String protocol, String file) {
+		int result = (protocol == null ? 0 : protocol.hashCode());
+		int separatorIndex = file.indexOf(SEPARATOR);
+		if (separatorIndex == -1) {
+			return result + file.hashCode();
+		}
+		String source = file.substring(0, separatorIndex);
+		String entry = canonicalize(file.substring(separatorIndex + 2));
+		try {
+			result += new URL(source).hashCode();
+		}
+		catch (MalformedURLException ex) {
+			result += source.hashCode();
+		}
+		result += entry.hashCode();
+		return result;
+	}
+
+	@Override
+	protected boolean sameFile(URL u1, URL u2) {
+		if (!u1.getProtocol().equals("jar") || !u2.getProtocol().equals("jar")) {
+			return false;
+		}
+		int separator1 = u1.getFile().indexOf(SEPARATOR);
+		int separator2 = u2.getFile().indexOf(SEPARATOR);
+		if (separator1 == -1 || separator2 == -1) {
+			return super.sameFile(u1, u2);
+		}
+		String nested1 = u1.getFile().substring(separator1 + SEPARATOR.length());
+		String nested2 = u2.getFile().substring(separator2 + SEPARATOR.length());
+		if (!nested1.equals(nested2)) {
+			String canonical1 = canonicalize(nested1);
+			String canonical2 = canonicalize(nested2);
+			if (!canonical1.equals(canonical2)) {
+				return false;
+			}
+		}
+		String root1 = u1.getFile().substring(0, separator1);
+		String root2 = u2.getFile().substring(0, separator2);
+		try {
+			return super.sameFile(new URL(root1), new URL(root2));
+		}
+		catch (MalformedURLException ex) {
+			// Continue
+		}
+		return super.sameFile(u1, u2);
+	}
+
+	private String canonicalize(String path) {
+		return path.replace(SEPARATOR, "/");
 	}
 
 	public JarFile getRootJarFileFromUrl(URL url) throws IOException {
@@ -178,8 +328,8 @@ public class Handler extends URLStreamHandler {
 	static void addToRootFileCache(File sourceFile, JarFile jarFile) {
 		Map<File, JarFile> cache = rootFileCache.get();
 		if (cache == null) {
-			cache = new ConcurrentHashMap<File, JarFile>();
-			rootFileCache = new SoftReference<Map<File, JarFile>>(cache);
+			cache = new ConcurrentHashMap<>();
+			rootFileCache = new SoftReference<>(cache);
 		}
 		cache.put(sourceFile, jarFile);
 	}

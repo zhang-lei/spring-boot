@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import java.net.URLClassLoader;
 import java.nio.charset.Charset;
 import java.util.Enumeration;
 import java.util.jar.JarEntry;
+import java.util.jar.JarInputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 
@@ -54,6 +55,7 @@ import static org.mockito.Mockito.verify;
  * @author Andy Wilkinson
  */
 public class JarFileTests {
+
 	private static final String PROTOCOL_HANDLER = "java.protocol.handler.pkgs";
 
 	private static final String HANDLERS_PACKAGE = "org.springframework.boot.loader";
@@ -270,6 +272,12 @@ public class JarFileTests {
 		assertThat(conn.getJarFile()).isSameAs(nestedJarFile);
 		assertThat(conn.getJarFileURL().toString())
 				.isEqualTo("jar:" + this.rootJarFile.toURI() + "!/nested.jar");
+		assertThat(conn.getInputStream()).isNotNull();
+		JarInputStream jarInputStream = new JarInputStream(conn.getInputStream());
+		assertThat(jarInputStream.getNextJarEntry().getName()).isEqualTo("3.dat");
+		assertThat(jarInputStream.getNextJarEntry().getName()).isEqualTo("4.dat");
+		assertThat(jarInputStream.getNextJarEntry().getName()).isEqualTo("\u00E4.dat");
+		jarInputStream.close();
 		assertThat(conn.getPermission()).isInstanceOf(FilePermission.class);
 		FilePermission permission = (FilePermission) conn.getPermission();
 		assertThat(permission.getActions()).isEqualTo("read");
@@ -459,6 +467,15 @@ public class JarFileTests {
 				System.setProperty(PROTOCOL_HANDLER, original);
 			}
 		}
+	}
+
+	@Test
+	public void jarFileCanBeDeletedOnceItHasBeenClosed() throws Exception {
+		File temp = this.temporaryFolder.newFile();
+		TestJarCreator.createTestJar(temp);
+		JarFile jf = new JarFile(temp);
+		jf.close();
+		assertThat(temp.delete()).isTrue();
 	}
 
 }

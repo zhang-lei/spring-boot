@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,10 @@
 
 package org.springframework.boot.autoconfigure.cassandra;
 
+import java.util.List;
+
 import com.datastax.driver.core.Cluster;
+import com.datastax.driver.core.PoolingOptions;
 import com.datastax.driver.core.QueryOptions;
 import com.datastax.driver.core.SocketOptions;
 import com.datastax.driver.core.policies.LoadBalancingPolicy;
@@ -24,6 +27,7 @@ import com.datastax.driver.core.policies.ReconnectionPolicy;
 import com.datastax.driver.core.policies.RetryPolicy;
 
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -37,6 +41,8 @@ import org.springframework.util.StringUtils;
  *
  * @author Julien Dubois
  * @author Phillip Webb
+ * @author Eddú Meléndez
+ * @author Stephane Nicoll
  * @since 1.3.0
  */
 @Configuration
@@ -46,13 +52,17 @@ public class CassandraAutoConfiguration {
 
 	private final CassandraProperties properties;
 
-	public CassandraAutoConfiguration(CassandraProperties properties) {
+	private final List<ClusterBuilderCustomizer> builderCustomizers;
+
+	public CassandraAutoConfiguration(CassandraProperties properties,
+			ObjectProvider<List<ClusterBuilderCustomizer>> builderCustomizers) {
 		this.properties = properties;
+		this.builderCustomizers = builderCustomizers.getIfAvailable();
 	}
 
 	@Bean
 	@ConditionalOnMissingBean
-	public Cluster cluster() {
+	public Cluster cassandraCluster() {
 		CassandraProperties properties = this.properties;
 		Cluster.Builder builder = Cluster.builder()
 				.withClusterName(properties.getClusterName())
@@ -80,9 +90,20 @@ public class CassandraAutoConfiguration {
 		if (properties.isSsl()) {
 			builder.withSSL();
 		}
+		builder.withPoolingOptions(getPoolingOptions());
 		String points = properties.getContactPoints();
 		builder.addContactPoints(StringUtils.commaDelimitedListToStringArray(points));
+
+		customize(builder);
 		return builder.build();
+	}
+
+	private void customize(Cluster.Builder builder) {
+		if (this.builderCustomizers != null) {
+			for (ClusterBuilderCustomizer customizer : this.builderCustomizers) {
+				customizer.customize(builder);
+			}
+		}
 	}
 
 	public static <T> T instantiate(Class<T> type) {
@@ -106,6 +127,16 @@ public class CassandraAutoConfiguration {
 		SocketOptions options = new SocketOptions();
 		options.setConnectTimeoutMillis(this.properties.getConnectTimeoutMillis());
 		options.setReadTimeoutMillis(this.properties.getReadTimeoutMillis());
+		return options;
+	}
+
+	private PoolingOptions getPoolingOptions() {
+		CassandraProperties.Pool pool = this.properties.getPool();
+		PoolingOptions options = new PoolingOptions();
+		options.setIdleTimeoutSeconds(pool.getIdleTimeout());
+		options.setPoolTimeoutMillis(pool.getPoolTimeout());
+		options.setHeartbeatIntervalSeconds(pool.getHeartbeatInterval());
+		options.setMaxQueueSize(pool.getMaxQueueSize());
 		return options;
 	}
 

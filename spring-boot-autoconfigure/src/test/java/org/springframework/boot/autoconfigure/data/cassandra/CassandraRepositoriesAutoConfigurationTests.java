@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,9 +24,9 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import org.springframework.boot.autoconfigure.PropertyPlaceholderAutoConfiguration;
 import org.springframework.boot.autoconfigure.TestAutoConfigurationPackage;
 import org.springframework.boot.autoconfigure.cassandra.CassandraAutoConfiguration;
+import org.springframework.boot.autoconfigure.context.PropertyPlaceholderAutoConfiguration;
 import org.springframework.boot.autoconfigure.data.alt.cassandra.CityCassandraRepository;
 import org.springframework.boot.autoconfigure.data.cassandra.city.City;
 import org.springframework.boot.autoconfigure.data.cassandra.city.CityRepository;
@@ -36,7 +36,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.FilterType;
-import org.springframework.data.cassandra.mapping.BasicCassandraMappingContext;
+import org.springframework.data.cassandra.core.mapping.CassandraMappingContext;
 import org.springframework.data.cassandra.repository.config.EnableCassandraRepositories;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -88,8 +88,8 @@ public class CassandraRepositoriesAutoConfigurationTests {
 
 	@SuppressWarnings("unchecked")
 	private Set<Class<?>> getInitialEntitySet() {
-		BasicCassandraMappingContext mappingContext = this.context
-				.getBean(BasicCassandraMappingContext.class);
+		CassandraMappingContext mappingContext = this.context
+				.getBean(CassandraMappingContext.class);
 		return (Set<Class<?>>) ReflectionTestUtils.getField(mappingContext,
 				"initialEntitySet");
 	}

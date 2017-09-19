@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,34 +16,26 @@
 
 package org.springframework.boot.autoconfigure.session;
 
-import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumSet;
 
-import com.hazelcast.core.Hazelcast;
-import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.core.IMap;
-import org.junit.Rule;
+import javax.servlet.DispatcherType;
+
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 
-import org.springframework.beans.DirectFieldAccessor;
 import org.springframework.beans.factory.BeanCreationException;
-import org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration;
-import org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration;
-import org.springframework.boot.autoconfigure.mongo.embedded.EmbeddedMongoAutoConfiguration;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.session.ExpiringSession;
 import org.springframework.session.MapSessionRepository;
 import org.springframework.session.SessionRepository;
-import org.springframework.session.data.mongo.MongoOperationsSessionRepository;
-import org.springframework.session.hazelcast.HazelcastSessionRepository;
+import org.springframework.session.config.annotation.web.http.EnableSpringHttpSession;
+import org.springframework.session.web.http.SessionRepositoryFilter;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 
 /**
  * Tests for {@link SessionAutoConfiguration}.
@@ -51,136 +43,117 @@ import static org.mockito.Mockito.verify;
  * @author Dave Syer
  * @author Eddú Meléndez
  * @author Stephane Nicoll
+ * @author Vedran Pavic
  */
 public class SessionAutoConfigurationTests extends AbstractSessionAutoConfigurationTests {
 
-	@Rule
-	public ExpectedException thrown = ExpectedException.none();
+	private final WebApplicationContextRunner contextRunner = new WebApplicationContextRunner()
+			.withConfiguration(AutoConfigurations.of(SessionAutoConfiguration.class));
 
 	@Test
-	public void contextFailsIfStoreTypeNotSet() {
-		this.thrown.expect(BeanCreationException.class);
-		this.thrown.expectMessage("No session repository could be auto-configured");
-		this.thrown.expectMessage("session store type is 'null'");
-		load();
+	public void contextFailsIfMultipleStoresAreAvailable() {
+		this.contextRunner.run((context) -> {
+			assertThat(context).hasFailed();
+			assertThat(context).getFailure()
+					.hasCauseInstanceOf(NonUniqueSessionRepositoryException.class);
+			assertThat(context).getFailure().hasMessageContaining(
+					"Multiple session repository candidates are available");
+		});
+	}
+
+	@Test
+	public void contextFailsIfStoreTypeNotAvailable() {
+		this.contextRunner.withPropertyValues("spring.session.store-type=jdbc")
+				.run((context) -> {
+					assertThat(context).hasFailed();
+					assertThat(context).getFailure().hasCauseInstanceOf(
+							SessionRepositoryUnavailableException.class);
+					assertThat(context).getFailure().hasMessageContaining(
+							"No session repository could be auto-configured");
+					assertThat(context).getFailure()
+							.hasMessageContaining("session store type is 'jdbc'");
+				});
 	}
 
 	@Test
 	public void autoConfigurationDisabledIfStoreTypeSetToNone() {
-		load("spring.session.store-type=none");
-		assertThat(this.context.getBeansOfType(SessionRepository.class)).hasSize(0);
+		this.contextRunner.withPropertyValues("spring.session.store-type=none")
+				.run((context) -> assertThat(context)
+						.doesNotHaveBean(SessionRepository.class));
 	}
 
 	@Test
 	public void backOffIfSessionRepositoryIsPresent() {
-		load(Collections.<Class<?>>singletonList(SessionRepositoryConfiguration.class),
-				"spring.session.store-type=mongo");
-		MapSessionRepository repository = validateSessionRepository(
-				MapSessionRepository.class);
-		assertThat(this.context.getBean("mySessionRepository")).isSameAs(repository);
-	}
-
-	@Test
-	public void hashMapSessionStore() {
-		load("spring.session.store-type=hash-map");
-		MapSessionRepository repository = validateSessionRepository(
-				MapSessionRepository.class);
-		assertThat(getSessionTimeout(repository)).isNull();
-	}
-
-	@Test
-	public void hashMapSessionStoreCustomTimeout() {
-		load("spring.session.store-type=hash-map", "server.session.timeout=3000");
-		MapSessionRepository repository = validateSessionRepository(
-				MapSessionRepository.class);
-		assertThat(getSessionTimeout(repository)).isEqualTo(3000);
+		this.contextRunner.withUserConfiguration(SessionRepositoryConfiguration.class)
+				.withPropertyValues("spring.session.store-type=redis").run((context) -> {
+					MapSessionRepository repository = validateSessionRepository(context,
+							MapSessionRepository.class);
+					assertThat(context).getBean("mySessionRepository")
+							.isSameAs(repository);
+				});
 	}
 
 	@Test
 	public void springSessionTimeoutIsNotAValidProperty() {
-		load("spring.session.store-type=hash-map", "spring.session.timeout=3000");
-		MapSessionRepository repository = validateSessionRepository(
-				MapSessionRepository.class);
-		assertThat(getSessionTimeout(repository)).isNull();
+		this.contextRunner.withUserConfiguration(SessionRepositoryConfiguration.class)
+				.withPropertyValues("spring.session.timeout=3000").run((context) -> {
+					assertThat(context).hasFailed();
+					assertThat(context).getFailure()
+							.isInstanceOf(BeanCreationException.class);
+					assertThat(context).getFailure()
+							.hasMessageContaining("Could not bind");
+				});
+	}
+
+	@SuppressWarnings("unchecked")
+	@Test
+	public void filterIsRegisteredWithAsyncErrorAndRequestDispatcherTypes() {
+		this.contextRunner.withUserConfiguration(SessionRepositoryConfiguration.class)
+				.run((context) -> {
+					FilterRegistrationBean<?> registration = context
+							.getBean(FilterRegistrationBean.class);
+					assertThat(registration.getFilter())
+							.isSameAs(context.getBean(SessionRepositoryFilter.class));
+					assertThat((EnumSet<DispatcherType>) ReflectionTestUtils
+							.getField(registration, "dispatcherTypes")).containsOnly(
+									DispatcherType.ASYNC, DispatcherType.ERROR,
+									DispatcherType.REQUEST);
+				});
 	}
 
 	@Test
-	public void hazelcastSessionStore() {
-		load(Collections.<Class<?>>singletonList(HazelcastConfiguration.class),
-				"spring.session.store-type=hazelcast");
-		validateSessionRepository(HazelcastSessionRepository.class);
+	public void filterOrderCanBeCustomizedWithCustomStore() {
+		this.contextRunner.withUserConfiguration(SessionRepositoryConfiguration.class)
+				.withPropertyValues("spring.session.servlet.filter-order=123")
+				.run((context) -> {
+					FilterRegistrationBean<?> registration = context
+							.getBean(FilterRegistrationBean.class);
+					assertThat(registration.getOrder()).isEqualTo(123);
+				});
 	}
 
+	@SuppressWarnings("unchecked")
 	@Test
-	public void hazelcastSessionStoreWithCustomizations() {
-		load(Collections.<Class<?>>singletonList(HazelcastSpecificMap.class),
-				"spring.session.store-type=hazelcast",
-				"spring.session.hazelcast.map-name=foo:bar:biz");
-		validateSessionRepository(HazelcastSessionRepository.class);
-		HazelcastInstance hazelcastInstance = this.context
-				.getBean(HazelcastInstance.class);
-		verify(hazelcastInstance, times(1)).getMap("foo:bar:biz");
-	}
-
-	@Test
-	public void mongoSessionStore() {
-		load(Arrays.asList(EmbeddedMongoAutoConfiguration.class,
-				MongoAutoConfiguration.class, MongoDataAutoConfiguration.class),
-				"spring.session.store-type=mongo", "spring.data.mongodb.port=0");
-		validateSessionRepository(MongoOperationsSessionRepository.class);
-	}
-
-	@Test
-	public void mongoSessionStoreWithCustomizations() {
-		load(Arrays.asList(EmbeddedMongoAutoConfiguration.class,
-				MongoAutoConfiguration.class, MongoDataAutoConfiguration.class),
-				"spring.session.store-type=mongo", "spring.data.mongodb.port=0",
-				"spring.session.mongo.collection-name=foobar");
-		MongoOperationsSessionRepository repository = validateSessionRepository(
-				MongoOperationsSessionRepository.class);
-		assertThat(new DirectFieldAccessor(repository).getPropertyValue("collectionName"))
-				.isEqualTo("foobar");
-	}
-
-	@Test
-	public void validationFailsIfSessionRepositoryIsNotConfigured() {
-		this.thrown.expect(BeanCreationException.class);
-		this.thrown.expectMessage("No session repository could be auto-configured");
-		this.thrown.expectMessage("session store type is 'JDBC'");
-		load("spring.session.store-type=jdbc");
+	public void filterDispatcherTypesCanBeCustomized() {
+		this.contextRunner.withUserConfiguration(SessionRepositoryConfiguration.class)
+				.withPropertyValues(
+						"spring.session.servlet.filter-dispatcher-types=error, request")
+				.run((context) -> {
+					FilterRegistrationBean<?> registration = context
+							.getBean(FilterRegistrationBean.class);
+					assertThat((EnumSet<DispatcherType>) ReflectionTestUtils
+							.getField(registration, "dispatcherTypes")).containsOnly(
+									DispatcherType.ERROR, DispatcherType.REQUEST);
+				});
 	}
 
 	@Configuration
+	@EnableSpringHttpSession
 	static class SessionRepositoryConfiguration {
 
 		@Bean
-		public SessionRepository<?> mySessionRepository() {
-			return new MapSessionRepository(
-					Collections.<String, ExpiringSession>emptyMap());
-		}
-
-	}
-
-	@Configuration
-	static class HazelcastConfiguration {
-
-		@Bean
-		public HazelcastInstance hazelcastInstance() {
-			return Hazelcast.newHazelcastInstance();
-		}
-
-	}
-
-	@Configuration
-	static class HazelcastSpecificMap {
-
-		@Bean
-		@SuppressWarnings("unchecked")
-		public HazelcastInstance hazelcastInstance() {
-			IMap<Object, Object> map = mock(IMap.class);
-			HazelcastInstance mock = mock(HazelcastInstance.class);
-			given(mock.getMap("foo:bar:biz")).willReturn(map);
-			return mock;
+		public MapSessionRepository mySessionRepository() {
+			return new MapSessionRepository(Collections.emptyMap());
 		}
 
 	}

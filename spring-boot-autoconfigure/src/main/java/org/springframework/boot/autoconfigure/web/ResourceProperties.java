@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,7 @@
 
 package org.springframework.boot.autoconfigure.web;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.context.properties.NestedConfigurationProperty;
-import org.springframework.context.ResourceLoaderAware;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.ResourceLoader;
 
 /**
  * Properties used to configure resource handling.
@@ -37,30 +28,17 @@ import org.springframework.core.io.ResourceLoader;
  * @since 1.1.0
  */
 @ConfigurationProperties(prefix = "spring.resources", ignoreUnknownFields = false)
-public class ResourceProperties implements ResourceLoaderAware {
-
-	private static final String[] SERVLET_RESOURCE_LOCATIONS = { "/" };
+public class ResourceProperties {
 
 	private static final String[] CLASSPATH_RESOURCE_LOCATIONS = {
 			"classpath:/META-INF/resources/", "classpath:/resources/",
 			"classpath:/static/", "classpath:/public/" };
 
-	private static final String[] RESOURCE_LOCATIONS;
-
-	static {
-		RESOURCE_LOCATIONS = new String[CLASSPATH_RESOURCE_LOCATIONS.length
-				+ SERVLET_RESOURCE_LOCATIONS.length];
-		System.arraycopy(SERVLET_RESOURCE_LOCATIONS, 0, RESOURCE_LOCATIONS, 0,
-				SERVLET_RESOURCE_LOCATIONS.length);
-		System.arraycopy(CLASSPATH_RESOURCE_LOCATIONS, 0, RESOURCE_LOCATIONS,
-				SERVLET_RESOURCE_LOCATIONS.length, CLASSPATH_RESOURCE_LOCATIONS.length);
-	}
-
 	/**
 	 * Locations of static resources. Defaults to classpath:[/META-INF/resources/,
-	 * /resources/, /static/, /public/] plus context:/ (the root of the servlet context).
+	 * /resources/, /static/, /public/].
 	 */
-	private String[] staticLocations = RESOURCE_LOCATIONS;
+	private String[] staticLocations = CLASSPATH_RESOURCE_LOCATIONS;
 
 	/**
 	 * Cache period for the resources served by the resource handler, in seconds.
@@ -74,59 +52,21 @@ public class ResourceProperties implements ResourceLoaderAware {
 
 	private final Chain chain = new Chain();
 
-	private ResourceLoader resourceLoader;
-
-	@Override
-	public void setResourceLoader(ResourceLoader resourceLoader) {
-		this.resourceLoader = resourceLoader;
-	}
-
 	public String[] getStaticLocations() {
 		return this.staticLocations;
 	}
 
 	public void setStaticLocations(String[] staticLocations) {
-		this.staticLocations = staticLocations;
+		this.staticLocations = appendSlashIfNecessary(staticLocations);
 	}
 
-	public Resource getWelcomePage() {
-		for (String location : getStaticWelcomePageLocations()) {
-			Resource resource = this.resourceLoader.getResource(location);
-			try {
-				if (resource.exists()) {
-					resource.getURL();
-					return resource;
-				}
-			}
-			catch (Exception ex) {
-				// Ignore
-			}
+	private String[] appendSlashIfNecessary(String[] staticLocations) {
+		String[] normalized = new String[staticLocations.length];
+		for (int i = 0; i < staticLocations.length; i++) {
+			String location = staticLocations[i];
+			normalized[i] = (location.endsWith("/") ? location : location + "/");
 		}
-		return null;
-	}
-
-	private String[] getStaticWelcomePageLocations() {
-		String[] result = new String[this.staticLocations.length];
-		for (int i = 0; i < result.length; i++) {
-			String location = this.staticLocations[i];
-			if (!location.endsWith("/")) {
-				location = location + "/";
-			}
-			result[i] = location + "index.html";
-		}
-		return result;
-	}
-
-	List<Resource> getFaviconLocations() {
-		List<Resource> locations = new ArrayList<Resource>(
-				this.staticLocations.length + 1);
-		if (this.resourceLoader != null) {
-			for (String location : this.staticLocations) {
-				locations.add(this.resourceLoader.getResource(location));
-			}
-		}
-		locations.add(new ClassPathResource("/"));
-		return Collections.unmodifiableList(locations);
+		return normalized;
 	}
 
 	public Integer getCachePeriod() {
@@ -176,7 +116,6 @@ public class ResourceProperties implements ResourceLoaderAware {
 		 */
 		private boolean gzipped = false;
 
-		@NestedConfigurationProperty
 		private final Strategy strategy = new Strategy();
 
 		/**
@@ -186,9 +125,8 @@ public class ResourceProperties implements ResourceLoaderAware {
 		 * settings are present.
 		 */
 		public Boolean getEnabled() {
-			Boolean strategyEnabled = getStrategy().getFixed().isEnabled()
-					|| getStrategy().getContent().isEnabled();
-			return (strategyEnabled ? Boolean.TRUE : this.enabled);
+			return getEnabled(getStrategy().getFixed().isEnabled(),
+					getStrategy().getContent().isEnabled(), this.enabled);
 		}
 
 		public void setEnabled(boolean enabled) {
@@ -223,6 +161,11 @@ public class ResourceProperties implements ResourceLoaderAware {
 			this.gzipped = gzipped;
 		}
 
+		static Boolean getEnabled(boolean fixedEnabled, boolean contentEnabled,
+				Boolean chainEnabled) {
+			return (fixedEnabled || contentEnabled ? Boolean.TRUE : chainEnabled);
+		}
+
 	}
 
 	/**
@@ -230,10 +173,8 @@ public class ResourceProperties implements ResourceLoaderAware {
 	 */
 	public static class Strategy {
 
-		@NestedConfigurationProperty
 		private final Fixed fixed = new Fixed();
 
-		@NestedConfigurationProperty
 		private final Content content = new Content();
 
 		public Fixed getFixed() {

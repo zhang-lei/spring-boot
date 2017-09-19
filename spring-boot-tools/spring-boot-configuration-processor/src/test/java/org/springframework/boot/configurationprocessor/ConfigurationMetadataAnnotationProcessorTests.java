@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,11 +34,22 @@ import org.springframework.boot.configurationprocessor.metadata.ConfigurationMet
 import org.springframework.boot.configurationprocessor.metadata.ItemDeprecation;
 import org.springframework.boot.configurationprocessor.metadata.ItemHint;
 import org.springframework.boot.configurationprocessor.metadata.ItemMetadata;
+import org.springframework.boot.configurationprocessor.metadata.Metadata;
+import org.springframework.boot.configurationprocessor.metadata.TestJsonConverter;
+import org.springframework.boot.configurationsample.endpoint.CustomPropertiesEndpoint;
+import org.springframework.boot.configurationsample.endpoint.DisabledEndpoint;
+import org.springframework.boot.configurationsample.endpoint.EnabledEndpoint;
+import org.springframework.boot.configurationsample.endpoint.OnlyJmxEndpoint;
+import org.springframework.boot.configurationsample.endpoint.OnlyWebEndpoint;
+import org.springframework.boot.configurationsample.endpoint.SimpleEndpoint;
+import org.springframework.boot.configurationsample.endpoint.incremental.IncrementalEndpoint;
+import org.springframework.boot.configurationsample.endpoint.incremental.IncrementalJmxEndpoint;
 import org.springframework.boot.configurationsample.incremental.BarProperties;
 import org.springframework.boot.configurationsample.incremental.FooProperties;
 import org.springframework.boot.configurationsample.incremental.RenamedBarProperties;
 import org.springframework.boot.configurationsample.lombok.LombokExplicitProperties;
 import org.springframework.boot.configurationsample.lombok.LombokInnerClassProperties;
+import org.springframework.boot.configurationsample.lombok.LombokInnerClassWithGetterProperties;
 import org.springframework.boot.configurationsample.lombok.LombokSimpleDataProperties;
 import org.springframework.boot.configurationsample.lombok.LombokSimpleProperties;
 import org.springframework.boot.configurationsample.lombok.SimpleLombokPojo;
@@ -47,6 +58,7 @@ import org.springframework.boot.configurationsample.method.EmptyTypeMethodConfig
 import org.springframework.boot.configurationsample.method.InvalidMethodConfig;
 import org.springframework.boot.configurationsample.method.MethodAndClassConfig;
 import org.springframework.boot.configurationsample.method.SimpleMethodConfig;
+import org.springframework.boot.configurationsample.simple.ClassWithNestedProperties;
 import org.springframework.boot.configurationsample.simple.DeprecatedSingleProperty;
 import org.springframework.boot.configurationsample.simple.HierarchicalProperties;
 import org.springframework.boot.configurationsample.simple.NotAnnotated;
@@ -59,12 +71,15 @@ import org.springframework.boot.configurationsample.specific.BuilderPojo;
 import org.springframework.boot.configurationsample.specific.DeprecatedUnrelatedMethodPojo;
 import org.springframework.boot.configurationsample.specific.DoubleRegistrationProperties;
 import org.springframework.boot.configurationsample.specific.ExcludedTypesPojo;
+import org.springframework.boot.configurationsample.specific.GenericConfig;
 import org.springframework.boot.configurationsample.specific.InnerClassAnnotatedGetterConfig;
+import org.springframework.boot.configurationsample.specific.InnerClassHierarchicalProperties;
 import org.springframework.boot.configurationsample.specific.InnerClassProperties;
 import org.springframework.boot.configurationsample.specific.InnerClassRootConfig;
 import org.springframework.boot.configurationsample.specific.InvalidAccessorProperties;
 import org.springframework.boot.configurationsample.specific.InvalidDoubleRegistrationProperties;
 import org.springframework.boot.configurationsample.specific.SimplePojo;
+import org.springframework.boot.testsupport.compiler.TestCompiler;
 import org.springframework.util.FileCopyUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -108,8 +123,8 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 				.withDescription("The name of this simple properties.")
 				.withDefaultValue("boot").withDeprecation(null, null));
 		assertThat(metadata).has(Metadata.withProperty("simple.flag", Boolean.class)
-				.fromSource(SimpleProperties.class).withDescription("A simple flag.")
-				.withDeprecation(null, null));
+				.withDefaultValue(false).fromSource(SimpleProperties.class)
+				.withDescription("A simple flag.").withDeprecation(null, null));
 		assertThat(metadata).has(Metadata.withProperty("simple.comparator"));
 		assertThat(metadata).doesNotHave(Metadata.withProperty("simple.counter"));
 		assertThat(metadata).doesNotHave(Metadata.withProperty("simple.size"));
@@ -134,7 +149,8 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 		assertThat(metadata)
 				.has(Metadata.withProperty("simple.type.my-byte", Byte.class));
 		assertThat(metadata)
-				.has(Metadata.withProperty("simple.type.my-primitive-byte", Byte.class));
+				.has(Metadata.withProperty("simple.type.my-primitive-byte", Byte.class)
+						.withDefaultValue(0));
 		assertThat(metadata)
 				.has(Metadata.withProperty("simple.type.my-char", Character.class));
 		assertThat(metadata).has(
@@ -142,19 +158,23 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 		assertThat(metadata)
 				.has(Metadata.withProperty("simple.type.my-boolean", Boolean.class));
 		assertThat(metadata).has(
-				Metadata.withProperty("simple.type.my-primitive-boolean", Boolean.class));
+				Metadata.withProperty("simple.type.my-primitive-boolean", Boolean.class)
+						.withDefaultValue(false));
 		assertThat(metadata)
 				.has(Metadata.withProperty("simple.type.my-short", Short.class));
-		assertThat(metadata).has(
-				Metadata.withProperty("simple.type.my-primitive-short", Short.class));
+		assertThat(metadata)
+				.has(Metadata.withProperty("simple.type.my-primitive-short", Short.class)
+						.withDefaultValue(0));
 		assertThat(metadata)
 				.has(Metadata.withProperty("simple.type.my-integer", Integer.class));
 		assertThat(metadata).has(
-				Metadata.withProperty("simple.type.my-primitive-integer", Integer.class));
+				Metadata.withProperty("simple.type.my-primitive-integer", Integer.class)
+						.withDefaultValue(0));
 		assertThat(metadata)
 				.has(Metadata.withProperty("simple.type.my-long", Long.class));
 		assertThat(metadata)
-				.has(Metadata.withProperty("simple.type.my-primitive-long", Long.class));
+				.has(Metadata.withProperty("simple.type.my-primitive-long", Long.class)
+						.withDefaultValue(0));
 		assertThat(metadata)
 				.has(Metadata.withProperty("simple.type.my-double", Double.class));
 		assertThat(metadata).has(
@@ -216,7 +236,7 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 						.withNoDeprecation().fromSource(type));
 		assertThat(metadata)
 				.has(Metadata.withProperty("not.deprecated.flag", Boolean.class)
-						.withNoDeprecation().fromSource(type));
+						.withDefaultValue(false).withNoDeprecation().fromSource(type));
 	}
 
 	@Test
@@ -224,8 +244,8 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 		Class<?> type = BoxingPojo.class;
 		ConfigurationMetadata metadata = compile(type);
 		assertThat(metadata).has(Metadata.withGroup("boxing").fromSource(type));
-		assertThat(metadata).has(
-				Metadata.withProperty("boxing.flag", Boolean.class).fromSource(type));
+		assertThat(metadata).has(Metadata.withProperty("boxing.flag", Boolean.class)
+				.withDefaultValue(false).fromSource(type));
 		assertThat(metadata).has(
 				Metadata.withProperty("boxing.counter", Integer.class).fromSource(type));
 	}
@@ -257,7 +277,7 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 		assertThat(metadata).has(Metadata.withProperty("foo.name", String.class)
 				.fromSource(SimpleMethodConfig.Foo.class));
 		assertThat(metadata).has(Metadata.withProperty("foo.flag", Boolean.class)
-				.fromSource(SimpleMethodConfig.Foo.class));
+				.withDefaultValue(false).fromSource(SimpleMethodConfig.Foo.class));
 	}
 
 	@Test
@@ -274,7 +294,7 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 		assertThat(metadata).has(Metadata.withProperty("conflict.name", String.class)
 				.fromSource(MethodAndClassConfig.Foo.class));
 		assertThat(metadata).has(Metadata.withProperty("conflict.flag", Boolean.class)
-				.fromSource(MethodAndClassConfig.Foo.class));
+				.withDefaultValue(false).fromSource(MethodAndClassConfig.Foo.class));
 		assertThat(metadata).has(Metadata.withProperty("conflict.value", String.class)
 				.fromSource(MethodAndClassConfig.class));
 	}
@@ -294,7 +314,7 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 				.fromSource(DeprecatedMethodConfig.Foo.class)
 				.withDeprecation(null, null));
 		assertThat(metadata).has(Metadata.withProperty("foo.flag", Boolean.class)
-				.fromSource(DeprecatedMethodConfig.Foo.class)
+				.withDefaultValue(false).fromSource(DeprecatedMethodConfig.Foo.class)
 				.withDeprecation(null, null));
 	}
 
@@ -308,9 +328,10 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 				.fromSource(
 						org.springframework.boot.configurationsample.method.DeprecatedClassMethodConfig.Foo.class)
 				.withDeprecation(null, null));
-		assertThat(metadata).has(Metadata.withProperty("foo.flag", Boolean.class)
-				.fromSource(
-						org.springframework.boot.configurationsample.method.DeprecatedClassMethodConfig.Foo.class)
+		assertThat(metadata).has(
+				Metadata.withProperty("foo.flag", Boolean.class).withDefaultValue(false)
+						.fromSource(
+								org.springframework.boot.configurationsample.method.DeprecatedClassMethodConfig.Foo.class)
 				.withDeprecation(null, null));
 	}
 
@@ -343,11 +364,43 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 	}
 
 	@Test
+	public void innerClassPropertiesHierarchical() throws Exception {
+		ConfigurationMetadata metadata = compile(InnerClassHierarchicalProperties.class);
+		assertThat(metadata).has(Metadata.withGroup("config.foo")
+				.ofType(InnerClassHierarchicalProperties.Foo.class));
+		assertThat(metadata).has(Metadata.withGroup("config.foo.bar")
+				.ofType(InnerClassHierarchicalProperties.Bar.class));
+		assertThat(metadata).has(Metadata.withGroup("config.foo.bar.baz")
+				.ofType(InnerClassHierarchicalProperties.Foo.Baz.class));
+		assertThat(metadata).has(Metadata.withProperty("config.foo.bar.baz.blah"));
+		assertThat(metadata).has(Metadata.withProperty("config.foo.bar.bling"));
+	}
+
+	@Test
 	public void innerClassAnnotatedGetterConfig() throws Exception {
 		ConfigurationMetadata metadata = compile(InnerClassAnnotatedGetterConfig.class);
 		assertThat(metadata).has(Metadata.withProperty("specific.value"));
 		assertThat(metadata).has(Metadata.withProperty("foo.name"));
 		assertThat(metadata).isNotEqualTo(Metadata.withProperty("specific.foo"));
+	}
+
+	@Test
+	public void nestedClassChildProperties() throws Exception {
+		ConfigurationMetadata metadata = compile(ClassWithNestedProperties.class);
+		assertThat(metadata).has(Metadata.withGroup("nestedChildProps")
+				.fromSource(ClassWithNestedProperties.NestedChildClass.class));
+		assertThat(metadata)
+				.has(Metadata
+						.withProperty("nestedChildProps.child-class-property",
+								Integer.class)
+						.fromSource(ClassWithNestedProperties.NestedChildClass.class)
+						.withDefaultValue(20));
+		assertThat(metadata)
+				.has(Metadata
+						.withProperty("nestedChildProps.parent-class-property",
+								Integer.class)
+						.fromSource(ClassWithNestedProperties.NestedChildClass.class)
+						.withDefaultValue(10));
 	}
 
 	@Test
@@ -389,6 +442,32 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 		this.thrown.expect(IllegalStateException.class);
 		this.thrown.expectMessage("Compilation failed");
 		compile(InvalidDoubleRegistrationProperties.class);
+	}
+
+	@Test
+	public void genericTypes() throws IOException {
+		ConfigurationMetadata metadata = compile(GenericConfig.class);
+		assertThat(metadata).has(Metadata.withGroup("generic").ofType(
+				"org.springframework.boot.configurationsample.specific.GenericConfig"));
+		assertThat(metadata).has(Metadata.withGroup("generic.foo").ofType(
+				"org.springframework.boot.configurationsample.specific.GenericConfig$Foo"));
+		assertThat(metadata).has(Metadata.withGroup("generic.foo.bar").ofType(
+				"org.springframework.boot.configurationsample.specific.GenericConfig$Bar"));
+		assertThat(metadata).has(Metadata.withGroup("generic.foo.bar.biz").ofType(
+				"org.springframework.boot.configurationsample.specific.GenericConfig$Bar$Biz"));
+		assertThat(metadata).has(Metadata.withProperty("generic.foo.name")
+				.ofType(String.class).fromSource(GenericConfig.Foo.class));
+		assertThat(metadata).has(Metadata.withProperty("generic.foo.string-to-bar")
+				.ofType("java.util.Map<java.lang.String,org.springframework.boot.configurationsample.specific.GenericConfig.Bar<java.lang.Integer>>")
+				.fromSource(GenericConfig.Foo.class));
+		assertThat(metadata).has(Metadata.withProperty("generic.foo.string-to-integer")
+				.ofType("java.util.Map<java.lang.String,java.lang.Integer>")
+				.fromSource(GenericConfig.Foo.class));
+		assertThat(metadata).has(Metadata.withProperty("generic.foo.bar.name")
+				.ofType("java.lang.String").fromSource(GenericConfig.Bar.class));
+		assertThat(metadata).has(Metadata.withProperty("generic.foo.bar.biz.name")
+				.ofType("java.lang.String").fromSource(GenericConfig.Bar.Biz.class));
+		assertThat(metadata.getItems()).hasSize(9);
 	}
 
 	@Test
@@ -439,6 +518,191 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 	}
 
 	@Test
+	public void lombokInnerClassWithGetterProperties() throws IOException {
+		ConfigurationMetadata metadata = compile(
+				LombokInnerClassWithGetterProperties.class);
+		assertThat(metadata).has(Metadata.withGroup("config")
+				.fromSource(LombokInnerClassWithGetterProperties.class));
+		assertThat(metadata).has(Metadata.withGroup("config.first")
+				.ofType(LombokInnerClassWithGetterProperties.Foo.class)
+				.fromSourceMethod("getFirst()")
+				.fromSource(LombokInnerClassWithGetterProperties.class));
+		assertThat(metadata).has(Metadata.withProperty("config.first.name"));
+		assertThat(metadata.getItems()).hasSize(3);
+	}
+
+	@Test
+	public void simpleEndpoint() throws IOException {
+		ConfigurationMetadata metadata = compile(SimpleEndpoint.class);
+		assertThat(metadata).has(
+				Metadata.withGroup("endpoints.simple").fromSource(SimpleEndpoint.class));
+		assertThat(metadata).has(enabledFlag("simple", null));
+		assertThat(metadata).has(jmxEnabledFlag("simple", null));
+		assertThat(metadata).has(webEnabledFlag("simple", null));
+		assertThat(metadata).has(cacheTtl("simple"));
+		assertThat(metadata.getItems()).hasSize(5);
+	}
+
+	@Test
+	public void disableEndpoint() throws IOException {
+		ConfigurationMetadata metadata = compile(DisabledEndpoint.class);
+		assertThat(metadata).has(Metadata.withGroup("endpoints.disabled")
+				.fromSource(DisabledEndpoint.class));
+		assertThat(metadata).has(enabledFlag("disabled", false));
+		assertThat(metadata).has(jmxEnabledFlag("disabled", false));
+		assertThat(metadata).has(webEnabledFlag("disabled", false));
+		assertThat(metadata).has(cacheTtl("disabled"));
+		assertThat(metadata.getItems()).hasSize(5);
+	}
+
+	@Test
+	public void enabledEndpoint() throws IOException {
+		ConfigurationMetadata metadata = compile(EnabledEndpoint.class);
+		assertThat(metadata).has(Metadata.withGroup("endpoints.enabled")
+				.fromSource(EnabledEndpoint.class));
+		assertThat(metadata).has(enabledFlag("enabled", true));
+		assertThat(metadata).has(jmxEnabledFlag("enabled", true));
+		assertThat(metadata).has(webEnabledFlag("enabled", true));
+		assertThat(metadata).has(cacheTtl("enabled"));
+		assertThat(metadata.getItems()).hasSize(5);
+	}
+
+	@Test
+	public void customPropertiesEndpoint() throws IOException {
+		ConfigurationMetadata metadata = compile(CustomPropertiesEndpoint.class);
+		assertThat(metadata).has(Metadata.withGroup("endpoints.customprops")
+				.fromSource(CustomPropertiesEndpoint.class));
+		assertThat(metadata).has(Metadata.withProperty("endpoints.customprops.name")
+				.ofType(String.class).withDefaultValue("test"));
+		assertThat(metadata).has(enabledFlag("customprops", null));
+		assertThat(metadata).has(jmxEnabledFlag("customprops", null));
+		assertThat(metadata).has(webEnabledFlag("customprops", null));
+		assertThat(metadata).has(cacheTtl("customprops"));
+		assertThat(metadata.getItems()).hasSize(6);
+	}
+
+	@Test
+	public void jmxOnlyEndpoint() throws IOException {
+		ConfigurationMetadata metadata = compile(OnlyJmxEndpoint.class);
+		assertThat(metadata).has(
+				Metadata.withGroup("endpoints.jmx").fromSource(OnlyJmxEndpoint.class));
+		assertThat(metadata).has(enabledFlag("jmx", null));
+		assertThat(metadata).has(jmxEnabledFlag("jmx", null));
+		assertThat(metadata).has(cacheTtl("jmx"));
+		assertThat(metadata.getItems()).hasSize(4);
+	}
+
+	@Test
+	public void webOnlyEndpoint() throws IOException {
+		ConfigurationMetadata metadata = compile(OnlyWebEndpoint.class);
+		assertThat(metadata).has(
+				Metadata.withGroup("endpoints.web").fromSource(OnlyWebEndpoint.class));
+		assertThat(metadata).has(enabledFlag("web", null));
+		assertThat(metadata).has(webEnabledFlag("web", null));
+		assertThat(metadata).has(cacheTtl("web"));
+		assertThat(metadata.getItems()).hasSize(4);
+	}
+
+	@Test
+	public void incrementalEndpointBuildChangeGeneralEnabledFlag() throws Exception {
+		TestProject project = new TestProject(this.temporaryFolder,
+				IncrementalEndpoint.class);
+		ConfigurationMetadata metadata = project.fullBuild();
+		assertThat(metadata).has(Metadata.withGroup("endpoints.incremental")
+				.fromSource(IncrementalEndpoint.class));
+		assertThat(metadata).has(enabledFlag("incremental", null));
+		assertThat(metadata).has(jmxEnabledFlag("incremental", null));
+		assertThat(metadata).has(webEnabledFlag("incremental", null));
+		assertThat(metadata).has(cacheTtl("incremental"));
+		assertThat(metadata.getItems()).hasSize(5);
+		project.replaceText(IncrementalEndpoint.class, "id = \"incremental\"",
+				"id = \"incremental\", defaultEnablement = org.springframework.boot."
+						+ "configurationsample.DefaultEnablement.DISABLED");
+		metadata = project.incrementalBuild(IncrementalEndpoint.class);
+		assertThat(metadata).has(Metadata.withGroup("endpoints.incremental")
+				.fromSource(IncrementalEndpoint.class));
+		assertThat(metadata).has(enabledFlag("incremental", false));
+		assertThat(metadata).has(jmxEnabledFlag("incremental", false));
+		assertThat(metadata).has(webEnabledFlag("incremental", false));
+		assertThat(metadata).has(cacheTtl("incremental"));
+		assertThat(metadata.getItems()).hasSize(5);
+	}
+
+	@Test
+	public void incrementalEndpointBuildDisableJmxEndpoint() throws Exception {
+		TestProject project = new TestProject(this.temporaryFolder,
+				IncrementalEndpoint.class);
+		ConfigurationMetadata metadata = project.fullBuild();
+		assertThat(metadata).has(Metadata.withGroup("endpoints.incremental")
+				.fromSource(IncrementalEndpoint.class));
+		assertThat(metadata).has(enabledFlag("incremental", null));
+		assertThat(metadata).has(jmxEnabledFlag("incremental", null));
+		assertThat(metadata).has(webEnabledFlag("incremental", null));
+		assertThat(metadata).has(cacheTtl("incremental"));
+		assertThat(metadata.getItems()).hasSize(5);
+		project.replaceText(IncrementalEndpoint.class, "id = \"incremental\"",
+				"id = \"incremental\", exposure = org.springframework.boot."
+						+ "configurationsample.EndpointExposure.WEB");
+		metadata = project.incrementalBuild(IncrementalEndpoint.class);
+		assertThat(metadata).has(Metadata.withGroup("endpoints.incremental")
+				.fromSource(IncrementalEndpoint.class));
+		assertThat(metadata).has(enabledFlag("incremental", null));
+		assertThat(metadata).has(webEnabledFlag("incremental", null));
+		assertThat(metadata).has(cacheTtl("incremental"));
+		assertThat(metadata.getItems()).hasSize(4);
+	}
+
+	@Test
+	public void incrementalEndpointBuildEnableJmxEndpoint() throws Exception {
+		TestProject project = new TestProject(this.temporaryFolder,
+				IncrementalJmxEndpoint.class);
+		ConfigurationMetadata metadata = project.fullBuild();
+		assertThat(metadata).has(Metadata.withGroup("endpoints.incremental")
+				.fromSource(IncrementalJmxEndpoint.class));
+		assertThat(metadata).has(enabledFlag("incremental", null));
+		assertThat(metadata).has(jmxEnabledFlag("incremental", null));
+		assertThat(metadata).has(cacheTtl("incremental"));
+		assertThat(metadata.getItems()).hasSize(4);
+		project.replaceText(IncrementalJmxEndpoint.class,
+				", exposure = EndpointExposure.JMX", "");
+		metadata = project.incrementalBuild(IncrementalJmxEndpoint.class);
+		assertThat(metadata).has(Metadata.withGroup("endpoints.incremental")
+				.fromSource(IncrementalJmxEndpoint.class));
+		assertThat(metadata).has(enabledFlag("incremental", null));
+		assertThat(metadata).has(jmxEnabledFlag("incremental", null));
+		assertThat(metadata).has(webEnabledFlag("incremental", null));
+		assertThat(metadata).has(cacheTtl("incremental"));
+		assertThat(metadata.getItems()).hasSize(5);
+	}
+
+	private Metadata.MetadataItemCondition enabledFlag(String endpointId,
+			Boolean defaultValue) {
+		return Metadata.withEnabledFlag("endpoints." + endpointId + ".enabled")
+				.withDefaultValue(defaultValue)
+				.withDescription(String.format("Enable the %s endpoint.", endpointId));
+	}
+
+	private Metadata.MetadataItemCondition jmxEnabledFlag(String endpointId,
+			Boolean defaultValue) {
+		return Metadata.withEnabledFlag("endpoints." + endpointId + ".jmx.enabled")
+				.withDefaultValue(defaultValue).withDescription(String
+						.format("Expose the %s endpoint as a JMX MBean.", endpointId));
+	}
+
+	private Metadata.MetadataItemCondition webEnabledFlag(String endpointId,
+			Boolean defaultValue) {
+		return Metadata.withEnabledFlag("endpoints." + endpointId + ".web.enabled")
+				.withDefaultValue(defaultValue).withDescription(String
+						.format("Expose the %s endpoint as a Web endpoint.", endpointId));
+	}
+
+	private Metadata.MetadataItemCondition cacheTtl(String endpointId) {
+		return Metadata.withProperty("endpoints." + endpointId + ".cache.time-to-live")
+				.ofType(Long.class).withDefaultValue(0).withDescription(
+						"Maximum time in milliseconds that a response can be cached.");
+	}
+
+	@Test
 	public void mergingOfAdditionalProperty() throws Exception {
 		ItemMetadata property = ItemMetadata.newProperty(null, "foo", "java.lang.String",
 				AdditionalMetadata.class.getName(), null, null, null, null);
@@ -477,14 +741,14 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 	@Test
 	public void mergeExistingPropertyDeprecation() throws Exception {
 		ItemMetadata property = ItemMetadata.newProperty("simple", "comparator", null,
-				null, null, null, null,
-				new ItemDeprecation("Don't use this.", "simple.complex-comparator"));
+				null, null, null, null, new ItemDeprecation("Don't use this.",
+						"simple.complex-comparator", "error"));
 		writeAdditionalMetadata(property);
 		ConfigurationMetadata metadata = compile(SimpleProperties.class);
 		assertThat(metadata)
 				.has(Metadata.withProperty("simple.comparator", "java.util.Comparator<?>")
-						.fromSource(SimpleProperties.class)
-						.withDeprecation("Don't use this.", "simple.complex-comparator"));
+						.fromSource(SimpleProperties.class).withDeprecation(
+								"Don't use this.", "simple.complex-comparator", "error"));
 		assertThat(metadata.getItems()).hasSize(4);
 	}
 
@@ -499,6 +763,19 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 				Metadata.withProperty("singledeprecated.name", String.class.getName())
 						.fromSource(DeprecatedSingleProperty.class)
 						.withDeprecation("Don't use this.", "single.name"));
+		assertThat(metadata.getItems()).hasSize(3);
+	}
+
+	@Test
+	public void mergeExistingPropertyDeprecationOverrideLevel() throws Exception {
+		ItemMetadata property = ItemMetadata.newProperty("singledeprecated", "name", null,
+				null, null, null, null, new ItemDeprecation(null, null, "error"));
+		writeAdditionalMetadata(property);
+		ConfigurationMetadata metadata = compile(DeprecatedSingleProperty.class);
+		assertThat(metadata).has(
+				Metadata.withProperty("singledeprecated.name", String.class.getName())
+						.fromSource(DeprecatedSingleProperty.class).withDeprecation(
+								"renamed", "singledeprecated.new-name", "error"));
 		assertThat(metadata.getItems()).hasSize(3);
 	}
 
@@ -583,8 +860,9 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 		JSONObject additionalMetadata = new JSONObject();
 		additionalMetadata.put("properties", properties);
 		FileWriter writer = new FileWriter(additionalMetadataFile);
-		additionalMetadata.write(writer);
+		writer.append(additionalMetadata.toString(2));
 		writer.flush();
+		writer.close();
 		ConfigurationMetadata metadata = compile(SimpleProperties.class);
 		assertThat(metadata).has(Metadata.withProperty("simple.comparator"));
 		assertThat(metadata).has(Metadata.withProperty("foo", String.class)
@@ -598,26 +876,30 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 		assertThat(project.getOutputFile(MetadataStore.METADATA_PATH).exists()).isFalse();
 		ConfigurationMetadata metadata = project.fullBuild();
 		assertThat(project.getOutputFile(MetadataStore.METADATA_PATH).exists()).isTrue();
-		assertThat(metadata).has(
-				Metadata.withProperty("foo.counter").fromSource(FooProperties.class));
-		assertThat(metadata).has(
-				Metadata.withProperty("bar.counter").fromSource(BarProperties.class));
+		assertThat(metadata).has(Metadata.withProperty("foo.counter")
+				.fromSource(FooProperties.class).withDefaultValue(0));
+		assertThat(metadata).has(Metadata.withProperty("bar.counter")
+				.fromSource(BarProperties.class).withDefaultValue(0));
 		metadata = project.incrementalBuild(BarProperties.class);
-		assertThat(metadata).has(
-				Metadata.withProperty("foo.counter").fromSource(FooProperties.class));
-		assertThat(metadata).has(
-				Metadata.withProperty("bar.counter").fromSource(BarProperties.class));
+		assertThat(metadata).has(Metadata.withProperty("foo.counter")
+				.fromSource(FooProperties.class).withDefaultValue(0));
+		assertThat(metadata).has(Metadata.withProperty("bar.counter")
+				.fromSource(BarProperties.class).withDefaultValue(0));
 		project.addSourceCode(BarProperties.class,
 				BarProperties.class.getResourceAsStream("BarProperties.snippet"));
 		metadata = project.incrementalBuild(BarProperties.class);
 		assertThat(metadata).has(Metadata.withProperty("bar.extra"));
-		assertThat(metadata).has(Metadata.withProperty("foo.counter"));
-		assertThat(metadata).has(Metadata.withProperty("bar.counter"));
+		assertThat(metadata)
+				.has(Metadata.withProperty("foo.counter").withDefaultValue(0));
+		assertThat(metadata)
+				.has(Metadata.withProperty("bar.counter").withDefaultValue(0));
 		project.revert(BarProperties.class);
 		metadata = project.incrementalBuild(BarProperties.class);
 		assertThat(metadata).isNotEqualTo(Metadata.withProperty("bar.extra"));
-		assertThat(metadata).has(Metadata.withProperty("foo.counter"));
-		assertThat(metadata).has(Metadata.withProperty("bar.counter"));
+		assertThat(metadata)
+				.has(Metadata.withProperty("foo.counter").withDefaultValue(0));
+		assertThat(metadata)
+				.has(Metadata.withProperty("bar.counter").withDefaultValue(0));
 	}
 
 	@Test
@@ -625,12 +907,15 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 		TestProject project = new TestProject(this.temporaryFolder, FooProperties.class,
 				BarProperties.class);
 		ConfigurationMetadata metadata = project.fullBuild();
-		assertThat(metadata).has(Metadata.withProperty("foo.counter"));
-		assertThat(metadata).has(Metadata.withProperty("bar.counter"));
+		assertThat(metadata)
+				.has(Metadata.withProperty("foo.counter").withDefaultValue(0));
+		assertThat(metadata)
+				.has(Metadata.withProperty("bar.counter").withDefaultValue(0));
 		project.replaceText(BarProperties.class, "@ConfigurationProperties",
 				"//@ConfigurationProperties");
 		metadata = project.incrementalBuild(BarProperties.class);
-		assertThat(metadata).has(Metadata.withProperty("foo.counter"));
+		assertThat(metadata)
+				.has(Metadata.withProperty("foo.counter").withDefaultValue(0));
 		assertThat(metadata).isNotEqualTo(Metadata.withProperty("bar.counter"));
 	}
 
@@ -639,20 +924,20 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 		TestProject project = new TestProject(this.temporaryFolder, FooProperties.class,
 				BarProperties.class);
 		ConfigurationMetadata metadata = project.fullBuild();
-		assertThat(metadata).has(
-				Metadata.withProperty("foo.counter").fromSource(FooProperties.class));
-		assertThat(metadata).has(
-				Metadata.withProperty("bar.counter").fromSource(BarProperties.class));
+		assertThat(metadata).has(Metadata.withProperty("foo.counter")
+				.fromSource(FooProperties.class).withDefaultValue(0));
+		assertThat(metadata).has(Metadata.withProperty("bar.counter")
+				.fromSource(BarProperties.class).withDefaultValue(0));
 		assertThat(metadata).doesNotHave(Metadata.withProperty("bar.counter")
 				.fromSource(RenamedBarProperties.class));
 		project.delete(BarProperties.class);
 		project.add(RenamedBarProperties.class);
 		metadata = project.incrementalBuild(RenamedBarProperties.class);
-		assertThat(metadata).has(
-				Metadata.withProperty("foo.counter").fromSource(FooProperties.class));
-		assertThat(metadata).doesNotHave(
-				Metadata.withProperty("bar.counter").fromSource(BarProperties.class));
-		assertThat(metadata).has(Metadata.withProperty("bar.counter")
+		assertThat(metadata).has(Metadata.withProperty("foo.counter")
+				.fromSource(FooProperties.class).withDefaultValue(0));
+		assertThat(metadata).doesNotHave(Metadata.withProperty("bar.counter")
+				.fromSource(BarProperties.class).withDefaultValue(0));
+		assertThat(metadata).has(Metadata.withProperty("bar.counter").withDefaultValue(0)
 				.fromSource(RenamedBarProperties.class));
 	}
 
@@ -677,23 +962,28 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 		return processor.getMetadata();
 	}
 
-	private void writeAdditionalMetadata(ItemMetadata... metadata) throws IOException {
+	private void writeAdditionalMetadata(ItemMetadata... metadata) throws Exception {
+		TestJsonConverter converter = new TestJsonConverter();
 		File additionalMetadataFile = createAdditionalMetadataFile();
 		JSONObject additionalMetadata = new JSONObject();
-		additionalMetadata.put("properties", metadata);
+		JSONArray properties = new JSONArray();
+		for (ItemMetadata itemMetadata : metadata) {
+			properties.put(converter.toJsonObject(itemMetadata));
+		}
+		additionalMetadata.put("properties", properties);
 		writeMetadata(additionalMetadataFile, additionalMetadata);
 	}
 
-	private void writeAdditionalHints(ItemHint... hints) throws IOException {
+	private void writeAdditionalHints(ItemHint... hints) throws Exception {
+		TestJsonConverter converter = new TestJsonConverter();
 		File additionalMetadataFile = createAdditionalMetadataFile();
 		JSONObject additionalMetadata = new JSONObject();
-		additionalMetadata.put("hints", hints);
+		additionalMetadata.put("hints", converter.toJsonArray(Arrays.asList(hints)));
 		writeMetadata(additionalMetadataFile, additionalMetadata);
 	}
 
-	private void writePropertyDeprecation(ItemMetadata... items) throws IOException {
+	private void writePropertyDeprecation(ItemMetadata... items) throws Exception {
 		File additionalMetadataFile = createAdditionalMetadataFile();
-
 		JSONArray propertiesArray = new JSONArray();
 		for (ItemMetadata item : items) {
 			JSONObject jsonObject = new JSONObject();
@@ -729,14 +1019,9 @@ public class ConfigurationMetadataAnnotationProcessorTests {
 		return additionalMetadataFile;
 	}
 
-	private void writeMetadata(File metadataFile, JSONObject metadata)
-			throws IOException {
-		FileWriter writer = new FileWriter(metadataFile);
-		try {
-			metadata.write(writer);
-		}
-		finally {
-			writer.close();
+	private void writeMetadata(File metadataFile, JSONObject metadata) throws Exception {
+		try (FileWriter writer = new FileWriter(metadataFile)) {
+			writer.append(metadata.toString(2));
 		}
 	}
 

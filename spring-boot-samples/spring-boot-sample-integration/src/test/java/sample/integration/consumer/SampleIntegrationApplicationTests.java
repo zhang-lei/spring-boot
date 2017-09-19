@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,14 +18,18 @@ package sample.integration.consumer;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.FileVisitOption;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import org.junit.AfterClass;
+import org.junit.After;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import sample.integration.SampleIntegrationApplication;
 import sample.integration.producer.ProducerApplication;
@@ -35,7 +39,6 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.ResourcePatternUtils;
-import org.springframework.util.FileSystemUtils;
 import org.springframework.util.StreamUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -48,30 +51,43 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 public class SampleIntegrationApplicationTests {
 
-	private static ConfigurableApplicationContext context;
+	private ConfigurableApplicationContext context;
 
-	@BeforeClass
-	public static void start() throws Exception {
-		context = SpringApplication.run(SampleIntegrationApplication.class);
+	@Before
+	public void deleteInputAndOutput() throws InterruptedException, IOException {
+		deleteIfExists(new File("target/input"));
+		deleteIfExists(new File("target/output"));
 	}
 
-	@AfterClass
-	public static void stop() {
-		if (context != null) {
-			context.close();
+	private void deleteIfExists(File directory) throws InterruptedException, IOException {
+		if (directory.exists()) {
+			Files.walk(directory.toPath(), FileVisitOption.FOLLOW_LINKS)
+					.sorted(Comparator.reverseOrder()).map(Path::toFile)
+					.forEach(File::delete);
 		}
 	}
 
-	@Before
-	public void deleteOutput() {
-		FileSystemUtils.deleteRecursively(new File("target/output"));
+	@After
+	public void stop() {
+		if (this.context != null) {
+			this.context.close();
+		}
 	}
 
 	@Test
 	public void testVanillaExchange() throws Exception {
+		this.context = SpringApplication.run(SampleIntegrationApplication.class);
 		SpringApplication.run(ProducerApplication.class, "World");
 		String output = getOutput();
 		assertThat(output).contains("Hello World");
+	}
+
+	@Test
+	public void testMessageGateway() throws Exception {
+		this.context = SpringApplication.run(SampleIntegrationApplication.class,
+				"testviamg");
+		String output = getOutput();
+		assertThat(output).contains("testviamg");
 	}
 
 	private String getOutput() throws Exception {
@@ -86,8 +102,10 @@ public class SampleIntegrationApplicationTests {
 						}
 						StringBuilder builder = new StringBuilder();
 						for (Resource resource : resources) {
-							builder.append(new String(StreamUtils
-									.copyToByteArray(resource.getInputStream())));
+							try (InputStream inputStream = resource.getInputStream()) {
+								builder.append(new String(
+										StreamUtils.copyToByteArray(inputStream)));
+							}
 						}
 						return builder.toString();
 					}

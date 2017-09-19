@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2014 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package org.springframework.boot.actuate.health;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
@@ -69,7 +68,7 @@ public class OrderedHealthAggregator extends AbstractHealthAggregator {
 	@Override
 	protected Status aggregateStatus(List<Status> candidates) {
 		// Only sort those status instances that we know about
-		List<Status> filteredCandidates = new ArrayList<Status>();
+		List<Status> filteredCandidates = new ArrayList<>();
 		for (Status candidate : candidates) {
 			if (this.statusOrder.contains(candidate.getCode())) {
 				filteredCandidates.add(candidate);
@@ -80,7 +79,7 @@ public class OrderedHealthAggregator extends AbstractHealthAggregator {
 			return Status.UNKNOWN;
 		}
 		// Sort given Status instances by configured order
-		Collections.sort(filteredCandidates, new StatusComparator(this.statusOrder));
+		filteredCandidates.sort(new StatusComparator(this.statusOrder));
 		return filteredCandidates.get(0);
 	}
 

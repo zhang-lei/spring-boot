@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,14 +21,14 @@ import java.util.Map;
 
 import org.openqa.selenium.WebDriver;
 
-import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.ObjectFactory;
-import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
+import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.config.Scope;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.util.ClassUtils;
+import org.springframework.util.StringUtils;
 
 /**
  * A special scope used for {@link WebDriver} beans. Usually registered by a
@@ -48,7 +48,7 @@ class WebDriverScope implements Scope {
 	private static final String[] BEAN_CLASSES = { WEB_DRIVER_CLASS,
 			"org.springframework.test.web.servlet.htmlunit.webdriver.MockMvcHtmlUnitDriverBuilder" };
 
-	private final Map<String, Object> instances = new HashMap<String, Object>();
+	private final Map<String, Object> instances = new HashMap<>();
 
 	@Override
 	public Object get(String name, ObjectFactory<?> objectFactory) {
@@ -114,21 +114,20 @@ class WebDriverScope implements Scope {
 		if (beanFactory.getRegisteredScope(NAME) == null) {
 			beanFactory.registerScope(NAME, new WebDriverScope());
 		}
-		context.addBeanFactoryPostProcessor(new BeanFactoryPostProcessor() {
+		context.addBeanFactoryPostProcessor(WebDriverScope::postProcessBeanFactory);
+	}
 
-			@Override
-			public void postProcessBeanFactory(
-					ConfigurableListableBeanFactory beanFactory) throws BeansException {
-				for (String beanClass : BEAN_CLASSES) {
-					for (String beanName : beanFactory.getBeanNamesForType(
-							ClassUtils.resolveClassName(beanClass, null))) {
-						beanFactory.getBeanDefinition(beanName).setScope(NAME);
-
-					}
+	private static void postProcessBeanFactory(
+			ConfigurableListableBeanFactory beanFactory) {
+		for (String beanClass : BEAN_CLASSES) {
+			for (String beanName : beanFactory
+					.getBeanNamesForType(ClassUtils.resolveClassName(beanClass, null))) {
+				BeanDefinition definition = beanFactory.getBeanDefinition(beanName);
+				if (!StringUtils.hasLength(definition.getScope())) {
+					definition.setScope(NAME);
 				}
 			}
-
-		});
+		}
 	}
 
 	/**

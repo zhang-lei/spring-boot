@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,10 @@ package org.springframework.boot.test.autoconfigure;
 
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
 import org.springframework.boot.test.rule.OutputCapture;
@@ -30,6 +32,7 @@ import org.springframework.test.context.TestContext;
 import org.springframework.test.context.support.DependencyInjectionTestExecutionListener;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -43,6 +46,9 @@ public class SpringBootDependencyInjectionTestExecutionListenerTests {
 
 	@Rule
 	public OutputCapture out = new OutputCapture();
+
+	@Rule
+	public ExpectedException thrown = ExpectedException.none();
 
 	private SpringBootDependencyInjectionTestExecutionListener reportListener = new SpringBootDependencyInjectionTestExecutionListener();
 
@@ -59,7 +65,7 @@ public class SpringBootDependencyInjectionTestExecutionListenerTests {
 		TestContext testContext = mock(TestContext.class);
 		given(testContext.getTestInstance()).willThrow(new IllegalStateException());
 		SpringApplication application = new SpringApplication(Config.class);
-		application.setWebEnvironment(false);
+		application.setWebApplicationType(WebApplicationType.NONE);
 		ConfigurableApplicationContext applicationContext = application.run();
 		given(testContext.getApplicationContext()).willReturn(applicationContext);
 		try {
@@ -73,9 +79,22 @@ public class SpringBootDependencyInjectionTestExecutionListenerTests {
 		this.out.expect(containsString("Negative matches"));
 	}
 
+	@Test
+	public void originalFailureIsThrownWhenReportGenerationFails() throws Exception {
+		TestContext testContext = mock(TestContext.class);
+		IllegalStateException originalFailure = new IllegalStateException();
+		given(testContext.getTestInstance()).willThrow(originalFailure);
+		SpringApplication application = new SpringApplication(Config.class);
+		application.setWebApplicationType(WebApplicationType.NONE);
+		given(testContext.getApplicationContext()).willThrow(new RuntimeException());
+		this.thrown.expect(is(originalFailure));
+		this.reportListener.prepareTestInstance(testContext);
+	}
+
 	@Configuration
 	@ImportAutoConfiguration(JacksonAutoConfiguration.class)
 	static class Config {
+
 	}
 
 }

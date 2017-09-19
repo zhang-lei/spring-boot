@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,8 +59,8 @@ public class AnnotationsPropertySource extends EnumerablePropertySource<Class<?>
 	}
 
 	private Map<String, Object> getProperties(Class<?> source) {
-		Map<String, Object> properties = new LinkedHashMap<String, Object>();
-		collectProperties(source, source, properties, new HashSet<Class<?>>());
+		Map<String, Object> properties = new LinkedHashMap<>();
+		collectProperties(source, source, properties, new HashSet<>());
 		return Collections.unmodifiableMap(properties);
 	}
 
@@ -84,11 +84,14 @@ public class AnnotationsPropertySource extends EnumerablePropertySource<Class<?>
 	}
 
 	private List<Annotation> getMergedAnnotations(Class<?> root, Class<?> source) {
-		List<Annotation> mergedAnnotations = new ArrayList<Annotation>();
-		for (Annotation annotation : AnnotationUtils.getAnnotations(source)) {
-			if (!AnnotationUtils.isInJavaLangAnnotationPackage(annotation)) {
-				mergedAnnotations
-						.add(findMergedAnnotation(root, annotation.annotationType()));
+		List<Annotation> mergedAnnotations = new ArrayList<>();
+		Annotation[] annotations = AnnotationUtils.getAnnotations(source);
+		if (annotations != null) {
+			for (Annotation annotation : annotations) {
+				if (!AnnotationUtils.isInJavaLangAnnotationPackage(annotation)) {
+					mergedAnnotations
+							.add(findMergedAnnotation(root, annotation.annotationType()));
+				}
 			}
 		}
 		return mergedAnnotations;

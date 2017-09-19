@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,6 +46,7 @@ import org.springframework.security.oauth2.config.annotation.web.configuration.E
 import org.springframework.security.oauth2.config.annotation.web.configurers.AuthorizationServerEndpointsConfigurer;
 import org.springframework.security.oauth2.config.annotation.web.configurers.AuthorizationServerSecurityConfigurer;
 import org.springframework.security.oauth2.provider.client.BaseClientDetails;
+import org.springframework.security.oauth2.provider.token.AccessTokenConverter;
 import org.springframework.security.oauth2.provider.token.TokenStore;
 
 /**
@@ -74,15 +75,19 @@ public class OAuth2AuthorizationServerConfiguration
 
 	private final TokenStore tokenStore;
 
+	private final AccessTokenConverter tokenConverter;
+
 	private final AuthorizationServerProperties properties;
 
 	public OAuth2AuthorizationServerConfiguration(BaseClientDetails details,
 			AuthenticationManager authenticationManager,
-			ObjectProvider<TokenStore> tokenStoreProvider,
+			ObjectProvider<TokenStore> tokenStore,
+			ObjectProvider<AccessTokenConverter> tokenConverter,
 			AuthorizationServerProperties properties) {
 		this.details = details;
 		this.authenticationManager = authenticationManager;
-		this.tokenStore = tokenStoreProvider.getIfAvailable();
+		this.tokenStore = tokenStore.getIfAvailable();
+		this.tokenConverter = tokenConverter.getIfAvailable();
 		this.properties = properties;
 	}
 
@@ -120,6 +125,9 @@ public class OAuth2AuthorizationServerConfiguration
 	@Override
 	public void configure(AuthorizationServerEndpointsConfigurer endpoints)
 			throws Exception {
+		if (this.tokenConverter != null) {
+			endpoints.accessTokenConverter(this.tokenConverter);
+		}
 		if (this.tokenStore != null) {
 			endpoints.tokenStore(this.tokenStore);
 		}
@@ -156,7 +164,8 @@ public class OAuth2AuthorizationServerConfiguration
 			String prefix = "security.oauth2.client";
 			boolean defaultSecret = this.credentials.isDefaultSecret();
 			logger.info(String.format(
-					"Initialized OAuth2 Client%n%n%s.clientId = %s%n%s.secret = %s%n%n",
+					"Initialized OAuth2 Client%n%n%s.client-id = %s%n"
+							+ "%s.client-secret = %s%n%n",
 					prefix, this.credentials.getClientId(), prefix,
 					defaultSecret ? this.credentials.getClientSecret() : "****"));
 		}
@@ -174,7 +183,7 @@ public class OAuth2AuthorizationServerConfiguration
 		}
 
 		@Bean
-		@ConfigurationProperties("security.oauth2.client")
+		@ConfigurationProperties(prefix = "security.oauth2.client")
 		public BaseClientDetails oauth2ClientDetails() {
 			BaseClientDetails details = new BaseClientDetails();
 			if (this.client.getClientId() == null) {

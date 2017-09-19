@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2013 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ public class ExtendedGroovyClassLoader extends GroovyClassLoader {
 
 	private static final URL[] NO_URLS = new URL[] {};
 
-	private final Map<String, byte[]> classResources = new HashMap<String, byte[]>();
+	private final Map<String, byte[]> classResources = new HashMap<>();
 
 	private final GroovyCompilerScope scope;
 
@@ -98,13 +98,9 @@ public class ExtendedGroovyClassLoader extends GroovyClassLoader {
 	private Class<?> findSharedClass(String name) {
 		try {
 			String path = name.replace('.', '/').concat(".class");
-			InputStream inputStream = getParent().getResourceAsStream(path);
-			if (inputStream != null) {
-				try {
+			try (InputStream inputStream = getParent().getResourceAsStream(path)) {
+				if (inputStream != null) {
 					return defineClass(name, FileCopyUtils.copyToByteArray(inputStream));
-				}
-				finally {
-					inputStream.close();
 				}
 			}
 			return null;
@@ -126,21 +122,21 @@ public class ExtendedGroovyClassLoader extends GroovyClassLoader {
 
 	@Override
 	public ClassCollector createCollector(CompilationUnit unit, SourceUnit su) {
-		InnerLoader loader = AccessController
-				.doPrivileged(new PrivilegedAction<InnerLoader>() {
-					@Override
-					public InnerLoader run() {
-						return new InnerLoader(ExtendedGroovyClassLoader.this) {
-							// Don't return URLs from the inner loader so that Tomcat only
-							// searches the parent. Fixes 'TLD skipped' issues
-							@Override
-							public URL[] getURLs() {
-								return NO_URLS;
-							}
-						};
-					}
-				});
+		InnerLoader loader = AccessController.doPrivileged(getInnerLoader());
 		return new ExtendedClassCollector(loader, unit, su);
+	}
+
+	private PrivilegedAction<InnerLoader> getInnerLoader() {
+		return () -> new InnerLoader(ExtendedGroovyClassLoader.this) {
+
+			// Don't return URLs from the inner loader so that Tomcat only
+			// searches the parent. Fixes 'TLD skipped' issues
+			@Override
+			public URL[] getURLs() {
+				return NO_URLS;
+			}
+
+		};
 	}
 
 	public CompilerConfiguration getConfiguration() {
@@ -161,9 +157,10 @@ public class ExtendedGroovyClassLoader extends GroovyClassLoader {
 		protected Class<?> createClass(byte[] code, ClassNode classNode) {
 			Class<?> createdClass = super.createClass(code, classNode);
 			ExtendedGroovyClassLoader.this.classResources
-					.put(classNode.getName().replace(".", "/") + ".class", code);
+					.put(classNode.getName().replace('.', '/') + ".class", code);
 			return createdClass;
 		}
+
 	}
 
 	/**
@@ -182,13 +179,13 @@ public class ExtendedGroovyClassLoader extends GroovyClassLoader {
 		}
 
 		private URL[] getGroovyJars(final ClassLoader parent) {
-			Set<URL> urls = new HashSet<URL>();
+			Set<URL> urls = new HashSet<>();
 			findGroovyJarsDirectly(parent, urls);
 			if (urls.isEmpty()) {
 				findGroovyJarsFromClassPath(parent, urls);
 			}
 			Assert.state(!urls.isEmpty(), "Unable to find groovy JAR");
-			return new ArrayList<URL>(urls).toArray(new URL[urls.size()]);
+			return new ArrayList<>(urls).toArray(new URL[urls.size()]);
 		}
 
 		private void findGroovyJarsDirectly(ClassLoader classLoader, Set<URL> urls) {
@@ -238,6 +235,7 @@ public class ExtendedGroovyClassLoader extends GroovyClassLoader {
 			this.groovyOnlyClassLoader.loadClass(name);
 			return super.loadClass(name, resolve);
 		}
+
 	}
 
 }

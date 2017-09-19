@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ import org.springframework.util.StringUtils;
 public class PoolingConnectionFactoryBean extends PoolingConnectionFactory
 		implements BeanNameAware, InitializingBean, DisposableBean {
 
-	private static final ThreadLocal<PoolingConnectionFactoryBean> source = new ThreadLocal<PoolingConnectionFactoryBean>();
+	private static final ThreadLocal<PoolingConnectionFactoryBean> source = new ThreadLocal<>();
 
 	private String beanName;
 
@@ -116,6 +116,7 @@ public class PoolingConnectionFactoryBean extends PoolingConnectionFactory
 	/**
 	 * A {@link XAConnectionFactory} implementation that delegates to the
 	 * {@link ThreadLocal} {@link PoolingConnectionFactoryBean}.
+	 *
 	 * @see PoolingConnectionFactoryBean#setConnectionFactory(XAConnectionFactory)
 	 */
 	public static class DirectXAConnectionFactory implements XAConnectionFactory {
@@ -148,7 +149,7 @@ public class PoolingConnectionFactoryBean extends PoolingConnectionFactory
 
 		@Override
 		public XAJMSContext createXAContext(String username, String password) {
-			return this.createXAContext(username, password);
+			return this.connectionFactory.createXAContext(username, password);
 		}
 
 	}

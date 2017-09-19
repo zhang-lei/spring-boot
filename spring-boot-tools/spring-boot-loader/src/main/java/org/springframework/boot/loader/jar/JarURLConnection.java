@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,15 +29,18 @@ import java.net.URLEncoder;
 import java.net.URLStreamHandler;
 import java.security.Permission;
 
+import org.springframework.boot.loader.data.RandomAccessData.ResourceAccess;
+
 /**
  * {@link java.net.JarURLConnection} used to support {@link JarFile#getUrl()}.
  *
  * @author Phillip Webb
  * @author Andy Wilkinson
+ * @author Rostyslav Dudka
  */
 final class JarURLConnection extends java.net.JarURLConnection {
 
-	private static ThreadLocal<Boolean> useFastExceptions = new ThreadLocal<Boolean>();
+	private static ThreadLocal<Boolean> useFastExceptions = new ThreadLocal<>();
 
 	private static final FileNotFoundException FILE_NOT_FOUND_EXCEPTION = new FileNotFoundException(
 			"Jar file or entry not found");
@@ -160,11 +163,14 @@ final class JarURLConnection extends java.net.JarURLConnection {
 		if (this.jarFile == null) {
 			throw FILE_NOT_FOUND_EXCEPTION;
 		}
-		if (this.jarEntryName.isEmpty()) {
+		if (this.jarEntryName.isEmpty()
+				&& this.jarFile.getType() == JarFile.JarFileType.DIRECT) {
 			throw new IOException("no entry name specified");
 		}
 		connect();
-		InputStream inputStream = this.jarFile.getInputStream(this.jarEntry);
+		InputStream inputStream = (this.jarEntryName.isEmpty()
+				? this.jarFile.getData().getInputStream(ResourceAccess.ONCE)
+				: this.jarFile.getInputStream(this.jarEntry));
 		if (inputStream == null) {
 			throwFileNotFound(this.jarEntryName, this.jarFile);
 		}
@@ -182,6 +188,15 @@ final class JarURLConnection extends java.net.JarURLConnection {
 
 	@Override
 	public int getContentLength() {
+		long length = getContentLengthLong();
+		if (length > Integer.MAX_VALUE) {
+			return -1;
+		}
+		return (int) length;
+	}
+
+	@Override
+	public long getContentLengthLong() {
 		if (this.jarFile == null) {
 			return -1;
 		}
@@ -218,6 +233,20 @@ final class JarURLConnection extends java.net.JarURLConnection {
 					this.jarFile.getRootJarFile().getFile().getPath(), READ_ACTION);
 		}
 		return this.permission;
+	}
+
+	@Override
+	public long getLastModified() {
+		if (this.jarFile == null || this.jarEntryName.isEmpty()) {
+			return 0;
+		}
+		try {
+			JarEntry entry = getJarEntry();
+			return (entry == null ? 0 : entry.getTime());
+		}
+		catch (IOException ex) {
+			return 0;
+		}
 	}
 
 	static void setUseFastExceptions(boolean useFastExceptions) {
@@ -288,7 +317,7 @@ final class JarURLConnection extends java.net.JarURLConnection {
 		}
 
 		private String decode(String source) {
-			if (source.length() == 0 || (source.indexOf('%') < 0)) {
+			if (source.isEmpty() || (source.indexOf('%') < 0)) {
 				return source;
 			}
 			ByteArrayOutputStream bos = new ByteArrayOutputStream(source.length());
@@ -342,7 +371,7 @@ final class JarURLConnection extends java.net.JarURLConnection {
 		}
 
 		public boolean isEmpty() {
-			return this.name.length() == 0;
+			return this.name.isEmpty();
 		}
 
 		public String getContentType() {

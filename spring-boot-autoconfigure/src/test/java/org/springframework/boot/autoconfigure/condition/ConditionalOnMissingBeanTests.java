@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,11 @@
 
 package org.springframework.boot.autoconfigure.condition;
 
+import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.util.Date;
 
 import org.junit.Test;
@@ -24,10 +29,10 @@ import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.support.BeanDefinitionBuilder;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
-import org.springframework.boot.autoconfigure.PropertyPlaceholderAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.scan.ScannedFactoryBeanConfiguration;
 import org.springframework.boot.autoconfigure.condition.scan.ScannedFactoryBeanWithBeanMethodArgumentsConfiguration;
-import org.springframework.boot.test.util.EnvironmentTestUtils;
+import org.springframework.boot.autoconfigure.context.PropertyPlaceholderAutoConfiguration;
+import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
@@ -171,7 +176,7 @@ public class ConditionalOnMissingBeanTests {
 		this.context.register(FactoryBeanWithBeanMethodArgumentsConfiguration.class,
 				ConditionalOnFactoryBean.class,
 				PropertyPlaceholderAutoConfiguration.class);
-		EnvironmentTestUtils.addEnvironment(this.context, "theValue:foo");
+		TestPropertyValues.of("theValue:foo").applyTo(this.context);
 		this.context.refresh();
 		assertThat(this.context.getBean(ExampleBean.class).toString())
 				.isEqualTo("fromFactory");
@@ -258,7 +263,7 @@ public class ConditionalOnMissingBeanTests {
 	}
 
 	@Test
-	public void grandparentIsConsideredWhenUsingParentsStrategy() {
+	public void grandparentIsConsideredWhenUsingAncestorsStrategy() {
 		this.context.register(ExampleBeanConfiguration.class);
 		this.context.refresh();
 		AnnotationConfigApplicationContext parent = new AnnotationConfigApplicationContext();
@@ -267,7 +272,7 @@ public class ConditionalOnMissingBeanTests {
 		AnnotationConfigApplicationContext child = new AnnotationConfigApplicationContext();
 		child.setParent(parent);
 		child.register(ExampleBeanConfiguration.class,
-				OnBeanInParentsConfiguration.class);
+				OnBeanInAncestorsConfiguration.class);
 		child.refresh();
 		assertThat(child.getBeansOfType(ExampleBean.class)).hasSize(1);
 		child.close();
@@ -275,21 +280,30 @@ public class ConditionalOnMissingBeanTests {
 	}
 
 	@Test
-	public void currentContextIsIgnoredWhenUsingParentsStrategy() {
+	public void currentContextIsIgnoredWhenUsingAncestorsStrategy() {
 		this.context.refresh();
 		AnnotationConfigApplicationContext child = new AnnotationConfigApplicationContext();
 		child.register(ExampleBeanConfiguration.class,
-				OnBeanInParentsConfiguration.class);
+				OnBeanInAncestorsConfiguration.class);
 		child.setParent(this.context);
 		child.refresh();
 		assertThat(child.getBeansOfType(ExampleBean.class)).hasSize(2);
 	}
 
+	@Test
+	public void beanProducedByFactoryBeanIsConsideredWhenMatchingOnAnnotation() {
+		this.context.register(ConcreteFactoryBeanConfiguration.class,
+				OnAnnotationWithFactoryBeanConfiguration.class);
+		this.context.refresh();
+		assertThat(this.context.containsBean("bar")).isFalse();
+		assertThat(this.context.getBeansOfType(ExampleBean.class)).hasSize(1);
+	}
+
 	@Configuration
-	protected static class OnBeanInParentsConfiguration {
+	protected static class OnBeanInAncestorsConfiguration {
 
 		@Bean
-		@ConditionalOnMissingBean(search = SearchStrategy.PARENTS)
+		@ConditionalOnMissingBean(search = SearchStrategy.ANCESTORS)
 		public ExampleBean exampleBean2() {
 			return new ExampleBean("test");
 		}
@@ -423,6 +437,7 @@ public class ConditionalOnMissingBeanTests {
 	@Configuration
 	@Import(FactoryBeanRegistrar.class)
 	protected static class RegisteredFactoryBeanConfiguration {
+
 	}
 
 	protected static class FactoryBeanRegistrar implements ImportBeanDefinitionRegistrar {
@@ -500,6 +515,17 @@ public class ConditionalOnMissingBeanTests {
 	}
 
 	@Configuration
+	@ConditionalOnMissingBean(annotation = TestAnnotation.class)
+	protected static class OnAnnotationWithFactoryBeanConfiguration {
+
+		@Bean
+		public String bar() {
+			return "bar";
+		}
+
+	}
+
+	@Configuration
 	@EnableScheduling
 	protected static class FooConfiguration {
 
@@ -553,6 +579,7 @@ public class ConditionalOnMissingBeanTests {
 
 	}
 
+	@TestAnnotation
 	public static class ExampleBean {
 
 		private String value;
@@ -579,7 +606,7 @@ public class ConditionalOnMissingBeanTests {
 	public static class ExampleFactoryBean implements FactoryBean<ExampleBean> {
 
 		public ExampleFactoryBean(String value) {
-			Assert.state(!value.contains("$"));
+			Assert.state(!value.contains("$"), "value should not contain '$'");
 		}
 
 		@Override
@@ -602,7 +629,7 @@ public class ConditionalOnMissingBeanTests {
 	public static class NonspecificFactoryBean implements FactoryBean<Object> {
 
 		public NonspecificFactoryBean(String value) {
-			Assert.state(!value.contains("$"));
+			Assert.state(!value.contains("$"), "value should not contain '$'");
 		}
 
 		@Override
@@ -621,4 +648,12 @@ public class ConditionalOnMissingBeanTests {
 		}
 
 	}
+
+	@Target(ElementType.TYPE)
+	@Retention(RetentionPolicy.RUNTIME)
+	@Documented
+	public @interface TestAnnotation {
+
+	}
+
 }

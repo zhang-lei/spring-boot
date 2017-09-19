@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.beans.factory.BeanFactoryUtils;
 import org.springframework.beans.factory.FactoryBean;
+import org.springframework.beans.factory.NoUniqueBeanDefinitionException;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.BeanPostProcessor;
@@ -60,7 +61,6 @@ import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.ReflectionUtils;
-import org.springframework.util.ReflectionUtils.FieldCallback;
 import org.springframework.util.StringUtils;
 
 /**
@@ -97,11 +97,11 @@ public class MockitoPostProcessor extends InstantiationAwareBeanPostProcessorAda
 
 	private final MockitoBeans mockitoBeans = new MockitoBeans();
 
-	private Map<Definition, String> beanNameRegistry = new HashMap<Definition, String>();
+	private Map<Definition, String> beanNameRegistry = new HashMap<>();
 
-	private Map<Field, RegisteredField> fieldRegistry = new HashMap<Field, RegisteredField>();
+	private Map<Field, RegisteredField> fieldRegistry = new HashMap<>();
 
-	private Map<String, SpyDefinition> spies = new HashMap<String, SpyDefinition>();
+	private Map<String, SpyDefinition> spies = new HashMap<>();
 
 	/**
 	 * Create a new {@link MockitoPostProcessor} instance with the given initial
@@ -149,7 +149,7 @@ public class MockitoPostProcessor extends InstantiationAwareBeanPostProcessorAda
 
 	private Set<Class<?>> getConfigurationClasses(
 			ConfigurableListableBeanFactory beanFactory) {
-		Set<Class<?>> configurationClasses = new LinkedHashSet<Class<?>>();
+		Set<Class<?>> configurationClasses = new LinkedHashSet<>();
 		for (BeanDefinition beanDefinition : getConfigurationBeanDefinitions(beanFactory)
 				.values()) {
 			configurationClasses.add(ClassUtils.resolveClassName(
@@ -160,7 +160,7 @@ public class MockitoPostProcessor extends InstantiationAwareBeanPostProcessorAda
 
 	private Map<String, BeanDefinition> getConfigurationBeanDefinitions(
 			ConfigurableListableBeanFactory beanFactory) {
-		Map<String, BeanDefinition> definitions = new LinkedHashMap<String, BeanDefinition>();
+		Map<String, BeanDefinition> definitions = new LinkedHashMap<>();
 		for (String beanName : beanFactory.getBeanDefinitionNames()) {
 			BeanDefinition definition = beanFactory.getBeanDefinition(beanName);
 			if (definition.getAttribute(CONFIGURATION_CLASS_ATTRIBUTE) != null) {
@@ -184,14 +184,15 @@ public class MockitoPostProcessor extends InstantiationAwareBeanPostProcessorAda
 			BeanDefinitionRegistry registry, MockDefinition definition, Field field) {
 		RootBeanDefinition beanDefinition = createBeanDefinition(definition);
 		String beanName = getBeanName(beanFactory, registry, definition, beanDefinition);
+		String transformedBeanName = BeanFactoryUtils.transformedBeanName(beanName);
 		beanDefinition.getConstructorArgumentValues().addIndexedArgumentValue(1,
 				beanName);
-		if (registry.containsBeanDefinition(beanName)) {
-			registry.removeBeanDefinition(beanName);
+		if (registry.containsBeanDefinition(transformedBeanName)) {
+			registry.removeBeanDefinition(transformedBeanName);
 		}
-		registry.registerBeanDefinition(beanName, beanDefinition);
+		registry.registerBeanDefinition(transformedBeanName, beanDefinition);
 		Object mock = createMock(definition, beanName);
-		beanFactory.registerSingleton(beanName, mock);
+		beanFactory.registerSingleton(transformedBeanName, mock);
 		this.mockitoBeans.add(mock);
 		this.beanNameRegistry.put(definition, beanName);
 		if (field != null) {
@@ -249,14 +250,14 @@ public class MockitoPostProcessor extends InstantiationAwareBeanPostProcessorAda
 			createSpy(registry, definition, field);
 		}
 		else {
-			registerSpies(definition, field, existingBeans);
+			registerSpies(registry, definition, field, existingBeans);
 		}
 	}
 
 	private Set<String> findCandidateBeans(ConfigurableListableBeanFactory beanFactory,
 			MockDefinition mockDefinition) {
 		QualifierDefinition qualifier = mockDefinition.getQualifier();
-		Set<String> candidates = new TreeSet<String>();
+		Set<String> candidates = new TreeSet<>();
 		for (String candidate : getExistingBeans(beanFactory,
 				mockDefinition.getTypeToMock())) {
 			if (qualifier == null || qualifier.matches(beanFactory, candidate)) {
@@ -268,7 +269,7 @@ public class MockitoPostProcessor extends InstantiationAwareBeanPostProcessorAda
 
 	private String[] getExistingBeans(ConfigurableListableBeanFactory beanFactory,
 			ResolvableType type) {
-		Set<String> beans = new LinkedHashSet<String>(
+		Set<String> beans = new LinkedHashSet<>(
 				Arrays.asList(beanFactory.getBeanNamesForType(type)));
 		String resolvedTypeName = type.resolve(Object.class).getName();
 		for (String beanName : beanFactory.getBeanNamesForType(FactoryBean.class)) {
@@ -306,15 +307,46 @@ public class MockitoPostProcessor extends InstantiationAwareBeanPostProcessorAda
 		registerSpy(definition, field, beanName);
 	}
 
-	private void registerSpies(SpyDefinition definition, Field field,
-			String[] existingBeans) {
-		Assert.state(field == null || existingBeans.length == 1,
-				"Unable to register spy bean " + definition.getTypeToSpy()
-						+ " expected a single existing bean to replace but found "
-						+ new TreeSet<String>(Arrays.asList(existingBeans)));
-		for (String beanName : existingBeans) {
-			registerSpy(definition, field, beanName);
+	private void registerSpies(BeanDefinitionRegistry registry, SpyDefinition definition,
+			Field field, String[] existingBeans) {
+		try {
+			registerSpy(definition, field,
+					determineBeanName(existingBeans, definition, registry));
 		}
+		catch (RuntimeException ex) {
+			throw new IllegalStateException(
+					"Unable to register spy bean " + definition.getTypeToSpy(), ex);
+		}
+	}
+
+	private String determineBeanName(String[] existingBeans, SpyDefinition definition,
+			BeanDefinitionRegistry registry) {
+		if (StringUtils.hasText(definition.getName())) {
+			return definition.getName();
+		}
+		if (existingBeans.length == 1) {
+			return existingBeans[0];
+		}
+		return determinePrimaryCandidate(registry, existingBeans,
+				definition.getTypeToSpy());
+	}
+
+	private String determinePrimaryCandidate(BeanDefinitionRegistry registry,
+			String[] candidateBeanNames, ResolvableType type) {
+		String primaryBeanName = null;
+		for (String candidateBeanName : candidateBeanNames) {
+			BeanDefinition beanDefinition = registry.getBeanDefinition(candidateBeanName);
+			if (beanDefinition.isPrimary()) {
+				if (primaryBeanName != null) {
+					throw new NoUniqueBeanDefinitionException(type.resolve(),
+							candidateBeanNames.length,
+							"more than one 'primary' bean found among candidates: "
+									+ Arrays.asList(candidateBeanNames));
+				}
+				primaryBeanName = candidateBeanName;
+			}
+		}
+		return primaryBeanName;
 	}
 
 	private void registerSpy(SpyDefinition definition, Field field, String beanName) {
@@ -338,15 +370,8 @@ public class MockitoPostProcessor extends InstantiationAwareBeanPostProcessorAda
 	public PropertyValues postProcessPropertyValues(PropertyValues pvs,
 			PropertyDescriptor[] pds, final Object bean, String beanName)
 					throws BeansException {
-		ReflectionUtils.doWithFields(bean.getClass(), new FieldCallback() {
-
-			@Override
-			public void doWith(Field field)
-					throws IllegalArgumentException, IllegalAccessException {
-				postProcessField(bean, field);
-			}
-
-		});
+		ReflectionUtils.doWithFields(bean.getClass(),
+				(field) -> postProcessField(bean, field));
 		return pvs;
 	}
 

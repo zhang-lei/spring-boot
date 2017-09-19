@@ -71,6 +71,7 @@ import org.springframework.retry.support.RetryTemplate;
  * <li>{@literal spring.rabbitmq.virtualHost} is used to specify the (optional) virtual
  * host to which the client should connect.</li>
  * </ul>
+ *
  * @author Greg Turnquist
  * @author Josh Long
  * @author Stephane Nicoll
@@ -112,8 +113,10 @@ public class RabbitAutoConfiguration {
 				if (ssl.getAlgorithm() != null) {
 					factory.setSslAlgorithm(ssl.getAlgorithm());
 				}
+				factory.setKeyStoreType(ssl.getKeyStoreType());
 				factory.setKeyStore(ssl.getKeyStore());
 				factory.setKeyStorePassphrase(ssl.getKeyStorePassword());
+				factory.setTrustStoreType(ssl.getTrustStoreType());
 				factory.setTrustStore(ssl.getTrustStore());
 				factory.setTrustStorePassphrase(ssl.getTrustStorePassword());
 			}

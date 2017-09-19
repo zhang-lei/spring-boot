@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -73,7 +73,9 @@ public class SpringApplicationRunner {
 		this.compiler = new GroovyCompiler(configuration);
 		int level = configuration.getLogLevel().intValue();
 		if (level <= Level.FINER.intValue()) {
-			System.setProperty("groovy.grape.report.downloads", "true");
+			System.setProperty(
+					"org.springframework.boot.cli.compiler.grape.ProgressReporter",
+					"detail");
 			System.setProperty("trace", "true");
 		}
 		else if (level <= Level.FINE.intValue()) {
@@ -82,19 +84,21 @@ public class SpringApplicationRunner {
 		else if (level == Level.OFF.intValue()) {
 			System.setProperty("spring.main.banner-mode", "OFF");
 			System.setProperty("logging.level.ROOT", "OFF");
+			System.setProperty(
+					"org.springframework.boot.cli.compiler.grape.ProgressReporter",
+					"none");
 		}
 	}
 
 	/**
 	 * Compile and run the application.
-	 *
 	 * @throws Exception on error
 	 */
 	public void compileAndRun() throws Exception {
 		synchronized (this.monitor) {
 			try {
 				stop();
-				Object[] compiledSources = compile();
+				Class<?>[] compiledSources = compile();
 				monitorForChanges();
 				// Run in new thread to ensure that the context classloader is setup
 				this.runThread = new RunThread(compiledSources);
@@ -121,8 +125,8 @@ public class SpringApplicationRunner {
 		}
 	}
 
-	private Object[] compile() throws IOException {
-		Object[] compiledSources = this.compiler.compile(this.sources);
+	private Class<?>[] compile() throws IOException {
+		Class<?>[] compiledSources = this.compiler.compile(this.sources);
 		if (compiledSources.length == 0) {
 			throw new RuntimeException(
 					"No classes found in '" + Arrays.toString(this.sources) + "'");
@@ -144,7 +148,7 @@ public class SpringApplicationRunner {
 
 		private final Object monitor = new Object();
 
-		private final Object[] compiledSources;
+		private final Class<?>[] compiledSources;
 
 		private Object applicationContext;
 
@@ -152,11 +156,11 @@ public class SpringApplicationRunner {
 		 * Create a new {@link RunThread} instance.
 		 * @param compiledSources the sources to launch
 		 */
-		RunThread(Object... compiledSources) {
+		RunThread(Class<?>... compiledSources) {
 			super("runner-" + (runnerCounter++));
 			this.compiledSources = compiledSources;
-			if (compiledSources.length != 0 && compiledSources[0] instanceof Class) {
-				setContextClassLoader(((Class<?>) compiledSources[0]).getClassLoader());
+			if (compiledSources.length != 0) {
+				setContextClassLoader(compiledSources[0].getClassLoader());
 			}
 			setDaemon(true);
 		}
@@ -198,6 +202,7 @@ public class SpringApplicationRunner {
 				}
 			}
 		}
+
 	}
 
 	/**
@@ -225,7 +230,7 @@ public class SpringApplicationRunner {
 		}
 
 		private List<File> getSourceFiles() {
-			List<File> sources = new ArrayList<File>();
+			List<File> sources = new ArrayList<>();
 			for (String source : SpringApplicationRunner.this.sources) {
 				List<String> paths = ResourceUtils.getUrls(source,
 						SpringApplicationRunner.this.compiler.getLoader());

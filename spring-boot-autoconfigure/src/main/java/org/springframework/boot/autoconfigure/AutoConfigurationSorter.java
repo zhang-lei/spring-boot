@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2016 the original author or authors.
+ * Copyright 2012-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,14 +20,12 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.springframework.core.Ordered;
 import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.core.type.classreading.MetadataReader;
 import org.springframework.core.type.classreading.MetadataReaderFactory;
@@ -35,8 +33,8 @@ import org.springframework.util.Assert;
 
 /**
  * Sort {@link EnableAutoConfiguration auto-configuration} classes into priority order by
- * reading {@link Ordered}, {@link AutoConfigureBefore} and {@link AutoConfigureAfter}
- * annotations (without loading classes).
+ * reading {@link AutoConfigureOrder}, {@link AutoConfigureBefore} and
+ * {@link AutoConfigureAfter} annotations (without loading classes).
  *
  * @author Phillip Webb
  */
@@ -44,26 +42,26 @@ class AutoConfigurationSorter {
 
 	private final MetadataReaderFactory metadataReaderFactory;
 
-	AutoConfigurationSorter(MetadataReaderFactory metadataReaderFactory) {
+	private final AutoConfigurationMetadata autoConfigurationMetadata;
+
+	AutoConfigurationSorter(MetadataReaderFactory metadataReaderFactory,
+			AutoConfigurationMetadata autoConfigurationMetadata) {
 		Assert.notNull(metadataReaderFactory, "MetadataReaderFactory must not be null");
 		this.metadataReaderFactory = metadataReaderFactory;
+		this.autoConfigurationMetadata = autoConfigurationMetadata;
 	}
 
-	public List<String> getInPriorityOrder(Collection<String> classNames)
-			throws IOException {
+	public List<String> getInPriorityOrder(Collection<String> classNames) {
 		final AutoConfigurationClasses classes = new AutoConfigurationClasses(
-				this.metadataReaderFactory, classNames);
-		List<String> orderedClassNames = new ArrayList<String>(classNames);
+				this.metadataReaderFactory, this.autoConfigurationMetadata, classNames);
+		List<String> orderedClassNames = new ArrayList<>(classNames);
 		// Initially sort alphabetically
 		Collections.sort(orderedClassNames);
 		// Then sort by order
-		Collections.sort(orderedClassNames, new Comparator<String>() {
-			@Override
-			public int compare(String o1, String o2) {
-				int i1 = classes.get(o1).getOrder();
-				int i2 = classes.get(o2).getOrder();
-				return (i1 < i2) ? -1 : (i1 > i2) ? 1 : 0;
-			}
+		orderedClassNames.sort((o1, o2) -> {
+			int i1 = classes.get(o1).getOrder();
+			int i2 = classes.get(o2).getOrder();
+			return (i1 < i2) ? -1 : (i1 > i2) ? 1 : 0;
 		});
 		// Then respect @AutoConfigureBefore @AutoConfigureAfter
 		orderedClassNames = sortByAnnotation(classes, orderedClassNames);
@@ -72,13 +70,13 @@ class AutoConfigurationSorter {
 
 	private List<String> sortByAnnotation(AutoConfigurationClasses classes,
 			List<String> classNames) {
-		List<String> toSort = new ArrayList<String>(classNames);
-		Set<String> sorted = new LinkedHashSet<String>();
-		Set<String> processing = new LinkedHashSet<String>();
+		List<String> toSort = new ArrayList<>(classNames);
+		Set<String> sorted = new LinkedHashSet<>();
+		Set<String> processing = new LinkedHashSet<>();
 		while (!toSort.isEmpty()) {
 			doSortByAfterAnnotation(classes, toSort, sorted, processing, null);
 		}
-		return new ArrayList<String>(sorted);
+		return new ArrayList<>(sorted);
 	}
 
 	private void doSortByAfterAnnotation(AutoConfigurationClasses classes,
@@ -101,14 +99,14 @@ class AutoConfigurationSorter {
 
 	private static class AutoConfigurationClasses {
 
-		private final Map<String, AutoConfigurationClass> classes = new HashMap<String, AutoConfigurationClass>();
+		private final Map<String, AutoConfigurationClass> classes = new HashMap<>();
 
 		AutoConfigurationClasses(MetadataReaderFactory metadataReaderFactory,
-				Collection<String> classNames) throws IOException {
+				AutoConfigurationMetadata autoConfigurationMetadata,
+				Collection<String> classNames) {
 			for (String className : classNames) {
-				MetadataReader metadataReader = metadataReaderFactory
-						.getMetadataReader(className);
-				this.classes.put(className, new AutoConfigurationClass(metadataReader));
+				this.classes.put(className, new AutoConfigurationClass(className,
+						metadataReaderFactory, autoConfigurationMetadata));
 			}
 		}
 
@@ -117,7 +115,7 @@ class AutoConfigurationSorter {
 		}
 
 		public Set<String> getClassesRequestedAfter(String className) {
-			Set<String> rtn = new LinkedHashSet<String>();
+			Set<String> rtn = new LinkedHashSet<>();
 			rtn.addAll(get(className).getAfter());
 			for (Map.Entry<String, AutoConfigurationClass> entry : this.classes
 					.entrySet()) {
@@ -127,41 +125,98 @@ class AutoConfigurationSorter {
 			}
 			return rtn;
 		}
+
 	}
 
 	private static class AutoConfigurationClass {
 
-		private final AnnotationMetadata metadata;
+		private final String className;
 
-		AutoConfigurationClass(MetadataReader metadataReader) {
-			this.metadata = metadataReader.getAnnotationMetadata();
-		}
+		private final MetadataReaderFactory metadataReaderFactory;
 
-		public int getOrder() {
-			Map<String, Object> orderedAnnotation = this.metadata
-					.getAnnotationAttributes(AutoConfigureOrder.class.getName());
-			return (orderedAnnotation == null ? Ordered.LOWEST_PRECEDENCE
-					: (Integer) orderedAnnotation.get("value"));
+		private final AutoConfigurationMetadata autoConfigurationMetadata;
+
+		private AnnotationMetadata annotationMetadata;
+
+		private final Set<String> before;
+
+		private final Set<String> after;
+
+		AutoConfigurationClass(String className,
+				MetadataReaderFactory metadataReaderFactory,
+				AutoConfigurationMetadata autoConfigurationMetadata) {
+			this.className = className;
+			this.metadataReaderFactory = metadataReaderFactory;
+			this.autoConfigurationMetadata = autoConfigurationMetadata;
+			this.before = readBefore();
+			this.after = readAfter();
 		}
 
 		public Set<String> getBefore() {
-			return getAnnotationValue(AutoConfigureBefore.class);
+			return this.before;
 		}
 
 		public Set<String> getAfter() {
+			return this.after;
+		}
+
+		private int getOrder() {
+			if (wasProcessed()) {
+				return this.autoConfigurationMetadata.getInteger(this.className,
+						"AutoConfigureOrder", AutoConfigureOrder.DEFAULT_ORDER);
+			}
+			Map<String, Object> attributes = getAnnotationMetadata()
+					.getAnnotationAttributes(AutoConfigureOrder.class.getName());
+			return (attributes == null ? AutoConfigureOrder.DEFAULT_ORDER
+					: (Integer) attributes.get("value"));
+		}
+
+		private Set<String> readBefore() {
+			if (wasProcessed()) {
+				return this.autoConfigurationMetadata.getSet(this.className,
+						"AutoConfigureBefore", Collections.<String>emptySet());
+			}
+			return getAnnotationValue(AutoConfigureBefore.class);
+		}
+
+		private Set<String> readAfter() {
+			if (wasProcessed()) {
+				return this.autoConfigurationMetadata.getSet(this.className,
+						"AutoConfigureAfter", Collections.<String>emptySet());
+			}
 			return getAnnotationValue(AutoConfigureAfter.class);
 		}
 
+		private boolean wasProcessed() {
+			return (this.autoConfigurationMetadata != null
+					&& this.autoConfigurationMetadata.wasProcessed(this.className));
+		}
+
 		private Set<String> getAnnotationValue(Class<?> annotation) {
-			Map<String, Object> attributes = this.metadata
+			Map<String, Object> attributes = getAnnotationMetadata()
 					.getAnnotationAttributes(annotation.getName(), true);
 			if (attributes == null) {
 				return Collections.emptySet();
 			}
-			Set<String> value = new LinkedHashSet<String>();
+			Set<String> value = new LinkedHashSet<>();
 			Collections.addAll(value, (String[]) attributes.get("value"));
 			Collections.addAll(value, (String[]) attributes.get("name"));
 			return value;
+		}
+
+		private AnnotationMetadata getAnnotationMetadata() {
+			if (this.annotationMetadata == null) {
+				try {
+					MetadataReader metadataReader = this.metadataReaderFactory
+							.getMetadataReader(this.className);
+					this.annotationMetadata = metadataReader.getAnnotationMetadata();
+				}
+				catch (IOException ex) {
+					throw new IllegalStateException(
+							"Unable to read meta-data for class " + this.className, ex);
+				}
+			}
+			return this.annotationMetadata;
 		}
 
 	}
